@@ -1,0 +1,109 @@
+﻿
+
+C:\Users\User\AppData\Local\FileSearch
+
+
+https://github.com/shahedbd/FileSearch
+
+
+
+Test data:
+
+C:\Program Files\WinRAR
+zipnew.dat
+
+SadeemAPK.com
+
+
+---publish
+Self-Contained: ~80-120 MB	✅ None
+dotnet publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true
+dotnet publish -c Release -r win-x64 --self-contained true
+
+Framework-Dependent: ~5-15 MB	❌ Requires .NET Runtime
+dotnet publish -c Release -r win-x64 --self-contained false /p:PublishSingleFile=true	
+With Trimming	
+Add /p:PublishTrimmed=true	~40-60 MB	✅ None
+
+
+
+Final: Anything Search 
+
+
+Old namespace name: AnythingSearch
+New namespace name: AnythingSearch
+
+
+
+Everything
+
+
+Duplicate File Finder & Cleaner
+https://apps.microsoft.com/detail/9NBCRW1VCCG3?hl=en-us&gl=BD&ocid=pdpshare
+
+
+
+Anything Search 
+WinFast Search
+WinFast File Search
+
+https://www.jam-software.com/ultrasearch
+
+
+
+
+
+App Name: Anything Search 
+Web: https://zerobytebd.com/anything-search 
+Email: shahedbddev@gmail.com
+
+Develop by: Zero Byte Software Solutions
+
+
+
+
+
+******************************AI Note ******************************
+Product name: Anything Search
+Web: https://zerobytebd.com/anything-search 
+Email: shahedbddev@gmail.com
+Develop by: Zero Byte Software Solutions
+Product Release Platform: Microsoft Store	
+
+Now Add following details:
+
+Description:
+What's new in this version:
+Product features:
+
+
+Short title:
+Voice title:
+Short description:
+
+Additional information
+Keywords:
+
+
+
+
+1440x2160
+2160x2160 or 1080x1080
+
+300x
+150x
+71x
+
+1920 x 1080 or 3840 x 2160
+
+584 x 800
+1920 x 1080
+1080 x 1080
+
+
+
+
+MS Store App Key Generation Process:
+Pass: Zerobytebd/bIhDV&6q=DMCcW|e6m
+
+

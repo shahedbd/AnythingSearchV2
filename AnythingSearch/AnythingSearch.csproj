@@ -1,0 +1,77 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationIcon>Resources\favicon.ico</ApplicationIcon>
+    <PackageIcon>apple-touch-icon.png</PackageIcon>
+
+    <!-- App Information -->
+    <Authors>Zero Byte Software Solutions</Authors>
+    <Title>Anything Search</Title>
+    <Product>Anything Search</Product>
+    <Company>Zero Byte Software Solutions</Company>
+    <Description>Anything Search lets you instantly locate files and folders on Windows using a lightning-fast indexed search engine.</Description>
+    <Copyright>© 2025 Zero Byte Software Solutions</Copyright>
+    <PackageProjectUrl>https://zerobytebd.com/anything-search</PackageProjectUrl>
+
+    <!-- Version - Updated for DPI fix -->
+    <Version>1.0.1.0</Version>
+    <FileVersion>1.0.1.0</FileVersion>
+    <AssemblyVersion>1.0.1.0</AssemblyVersion>
+
+    <!-- CRITICAL: High DPI Support for Microsoft Store (150% scaling fix) -->
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <FormsHighDpiMode>PerMonitorV2</FormsHighDpiMode>
+    <EnableWindowsFormsHighDpiAutoResizing>true</EnableWindowsFormsHighDpiAutoResizing>
+
+    <!-- Windows Settings -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <Platforms>AnyCPU;x64;ARM64</Platforms>
+  </PropertyGroup>
+
+  <!-- Manifest file for DPI awareness -->
+  <ItemGroup>
+    <None Update="app.manifest">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Resources\favicon.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.1" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.2" />
+    <PackageReference Include="System.Data.OleDb" Version="9.0.0" />
+    <PackageReference Include="System.Management" Version="9.0.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="Properties\Settings.Designer.cs">
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Settings.settings</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Properties\Settings.settings">
+      <Generator>SettingsSingleFileGenerator</Generator>
+      <LastGenOutput>Settings.Designer.cs</LastGenOutput>
+    </None>
+    <None Update="Resources\favicon.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Resources\favicon_io\apple-touch-icon.png">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
+
+</Project>
