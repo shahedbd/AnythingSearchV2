@@ -23,6 +23,9 @@ public partial class AboutForm : Form
     private static readonly Color TextSecondary = Color.FromArgb(96, 96, 96);
     private static readonly Color TextMuted = Color.FromArgb(128, 128, 128);
 
+    // DPI scale factor
+    private float _dpiScale = 1.0f;
+
     public AboutForm()
     {
         InitializeComponent();
@@ -38,7 +41,14 @@ public partial class AboutForm : Form
         this.AutoScaleDimensions = new SizeF(96F, 96F);
         this.Font = new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
 
-        ClientSize = new Size(550, 680);
+        // Get DPI scale factor
+        _dpiScale = this.DeviceDpi / 96f;
+
+        // Scale the form size
+        int baseWidth = 550;
+        int baseHeight = 680;
+        ClientSize = new Size((int)(baseWidth * _dpiScale), (int)(baseHeight * _dpiScale));
+
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -61,6 +71,9 @@ public partial class AboutForm : Form
         ResumeLayout(false);
     }
 
+    // Helper method to scale values
+    private int Scale(int value) => (int)(value * _dpiScale);
+
     private void InitializeUI()
     {
         int centerX = this.ClientSize.Width / 2;
@@ -70,12 +83,13 @@ public partial class AboutForm : Form
         // ═══════════════════════════════════════════════════════════
 
         // App Icon
+        int iconSize = Scale(80);
         PictureBox iconLogo = new PictureBox
         {
             Image = GetAppIcon(),
             SizeMode = PictureBoxSizeMode.Zoom,
-            Size = new Size(80, 80),
-            Location = new Point(centerX - 40, 25),
+            Size = new Size(iconSize, iconSize),
+            Location = new Point(centerX - iconSize / 2, Scale(25)),
             BackColor = Color.Transparent
         };
         this.Controls.Add(iconLogo);
@@ -90,10 +104,12 @@ public partial class AboutForm : Form
             BackColor = Color.Transparent
         };
         int appNameWidth = TextRenderer.MeasureText(lblAppName.Text, lblAppName.Font).Width;
-        lblAppName.Location = new Point(centerX - appNameWidth / 2, 115);
+        lblAppName.Location = new Point(centerX - appNameWidth / 2, Scale(115));
         this.Controls.Add(lblAppName);
 
         // Version Badge
+        int badgeWidth = Scale(120);
+        int badgeHeight = Scale(24);
         Label lblVersion = new Label
         {
             Text = $"Version {CommonData.ApplicationVersion}",
@@ -102,10 +118,10 @@ public partial class AboutForm : Form
             BackColor = PrimaryColor,
             AutoSize = false,
             TextAlign = ContentAlignment.MiddleCenter,
-            Size = new Size(120, 24),
-            Padding = new Padding(8, 4, 8, 4)
+            Size = new Size(badgeWidth, badgeHeight),
+            Padding = new Padding(Scale(8), Scale(4), Scale(8), Scale(4))
         };
-        lblVersion.Location = new Point(centerX - 50, 155);
+        lblVersion.Location = new Point(centerX - badgeWidth / 2, Scale(155));
         this.Controls.Add(lblVersion);
 
         // Tagline
@@ -118,14 +134,14 @@ public partial class AboutForm : Form
             BackColor = Color.Transparent
         };
         int taglineWidth = TextRenderer.MeasureText(lblTagline.Text, lblTagline.Font).Width;
-        lblTagline.Location = new Point(centerX - taglineWidth / 2, 190);
+        lblTagline.Location = new Point(centerX - taglineWidth / 2, Scale(190));
         this.Controls.Add(lblTagline);
 
         // ═══════════════════════════════════════════════════════════
         // FEATURES CARD
         // ═══════════════════════════════════════════════════════════
 
-        Panel featuresCard = CreateCard(25, 225, 500, 220);
+        Panel featuresCard = CreateCard(Scale(25), Scale(225), this.ClientSize.Width - Scale(50), Scale(220));
 
         Label lblFeaturesTitle = new Label
         {
@@ -133,7 +149,7 @@ public partial class AboutForm : Form
             Font = new Font("Segoe UI Semibold", 11),
             ForeColor = PrimaryColor,
             AutoSize = true,
-            Location = new Point(15, 12),
+            Location = new Point(Scale(15), Scale(12)),
             BackColor = Color.Transparent
         };
         featuresCard.Controls.Add(lblFeaturesTitle);
@@ -149,7 +165,8 @@ public partial class AboutForm : Form
             "🚀  Built with .NET 8.0 for optimal performance"
         };
 
-        int yPos = 42;
+        int yPos = Scale(42);
+        int lineHeight = Scale(24);
         foreach (var feature in features)
         {
             var lbl = new Label
@@ -158,11 +175,11 @@ public partial class AboutForm : Form
                 Font = new Font("Segoe UI", 9.5f),
                 ForeColor = TextPrimary,
                 AutoSize = true,
-                Location = new Point(20, yPos),
+                Location = new Point(Scale(20), yPos),
                 BackColor = Color.Transparent
             };
             featuresCard.Controls.Add(lbl);
-            yPos += 24;
+            yPos += lineHeight;
         }
 
         this.Controls.Add(featuresCard);
@@ -171,7 +188,7 @@ public partial class AboutForm : Form
         // CONTACT CARD
         // ═══════════════════════════════════════════════════════════
 
-        Panel contactCard = CreateCard(25, 455, 500, 120);
+        Panel contactCard = CreateCard(Scale(25), Scale(455), this.ClientSize.Width - Scale(50), Scale(120));
 
         Label lblContactTitle = new Label
         {
@@ -179,18 +196,18 @@ public partial class AboutForm : Form
             Font = new Font("Segoe UI Semibold", 11),
             ForeColor = PrimaryColor,
             AutoSize = true,
-            Location = new Point(15, 12),
+            Location = new Point(Scale(15), Scale(12)),
             BackColor = Color.Transparent
         };
         contactCard.Controls.Add(lblContactTitle);
 
         // Website Link
-        var lblWebsite = CreateLinkLabel("🌐  Website:", AppWebsite, 45);
+        var lblWebsite = CreateLinkLabel("🌐  Website:", AppWebsite, Scale(45));
         contactCard.Controls.Add(lblWebsite.Item1);
         contactCard.Controls.Add(lblWebsite.Item2);
 
         // Email Link
-        var lblEmail = CreateLinkLabel("📧  Email:", AppEmail, 72);
+        var lblEmail = CreateLinkLabel("📧  Email:", AppEmail, Scale(72));
         contactCard.Controls.Add(lblEmail.Item1);
         contactCard.Controls.Add(lblEmail.Item2);
 
@@ -200,13 +217,18 @@ public partial class AboutForm : Form
         // BUTTONS
         // ═══════════════════════════════════════════════════════════
 
+        int btnWidth = Scale(160);
+        int btnHeight = Scale(38);
+        int btnY = Scale(590);
+        int btnSpacing = Scale(10);
+
         // Check for Updates Button
         Button btnUpdate = new Button
         {
             Text = "🔄  Check for Updates",
             Font = new Font("Segoe UI", 9.5f),
-            Size = new Size(160, 38),
-            Location = new Point(centerX - 170, 590),
+            Size = new Size(btnWidth, btnHeight),
+            Location = new Point(centerX - btnWidth - btnSpacing / 2, btnY),
             BackColor = CardColor,
             ForeColor = PrimaryColor,
             FlatStyle = FlatStyle.Flat,
@@ -226,12 +248,13 @@ public partial class AboutForm : Form
         this.Controls.Add(btnUpdate);
 
         // Close Button
+        int closeBtnWidth = Scale(120);
         Button btnClose = new Button
         {
             Text = "✕  Close",
             Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
-            Size = new Size(120, 38),
-            Location = new Point(centerX + 10, 590),
+            Size = new Size(closeBtnWidth, btnHeight),
+            Location = new Point(centerX + btnSpacing / 2, btnY),
             BackColor = PrimaryColor,
             ForeColor = Color.White,
             FlatStyle = FlatStyle.Flat,
@@ -256,7 +279,7 @@ public partial class AboutForm : Form
             BackColor = Color.Transparent
         };
         int devWidth = TextRenderer.MeasureText(lblDeveloper.Text, lblDeveloper.Font).Width;
-        lblDeveloper.Location = new Point(centerX - devWidth / 2, 640);
+        lblDeveloper.Location = new Point(centerX - devWidth / 2, Scale(640));
         this.Controls.Add(lblDeveloper);
 
         // Copyright
@@ -269,7 +292,7 @@ public partial class AboutForm : Form
             BackColor = Color.Transparent
         };
         int copyWidth = TextRenderer.MeasureText(lblCopyright.Text, lblCopyright.Font).Width;
-        lblCopyright.Location = new Point(centerX - copyWidth / 2, 658);
+        lblCopyright.Location = new Point(centerX - copyWidth / 2, Scale(658));
         this.Controls.Add(lblCopyright);
     }
 
@@ -297,7 +320,7 @@ public partial class AboutForm : Form
             Font = new Font("Segoe UI", 9.5f),
             ForeColor = TextPrimary,
             AutoSize = true,
-            Location = new Point(20, yPos),
+            Location = new Point(Scale(20), yPos),
             BackColor = Color.Transparent
         };
 
@@ -308,7 +331,7 @@ public partial class AboutForm : Form
             LinkColor = PrimaryColor,
             ActiveLinkColor = PrimaryDark,
             AutoSize = true,
-            Location = new Point(105, yPos),
+            Location = new Point(Scale(105), yPos),
             BackColor = Color.Transparent
         };
         link.LinkClicked += (s, e) =>
@@ -337,14 +360,16 @@ public partial class AboutForm : Form
             var iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "favicon.ico");
             if (File.Exists(iconPath))
             {
-                using var icon = new Icon(iconPath, 80, 80);
+                int iconSize = Scale(80);
+                using var icon = new Icon(iconPath, iconSize, iconSize);
                 return icon.ToBitmap();
             }
         }
         catch { }
 
         // Fallback: Create a modern icon
-        var bmp = new Bitmap(80, 80);
+        int size = Scale(80);
+        var bmp = new Bitmap(size, size);
         using (var g = Graphics.FromImage(bmp))
         {
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
@@ -352,14 +377,15 @@ public partial class AboutForm : Form
             // Draw circle background
             using (var brush = new SolidBrush(PrimaryColor))
             {
-                g.FillEllipse(brush, 2, 2, 76, 76);
+                g.FillEllipse(brush, 2, 2, size - 4, size - 4);
             }
 
-            // Draw search icon
-            using (var pen = new Pen(Color.White, 4))
+            // Draw search icon (scaled)
+            float iconScale = size / 80f;
+            using (var pen = new Pen(Color.White, 4 * iconScale))
             {
-                g.DrawEllipse(pen, 20, 18, 32, 32);
-                g.DrawLine(pen, 46, 46, 58, 58);
+                g.DrawEllipse(pen, 20 * iconScale, 18 * iconScale, 32 * iconScale, 32 * iconScale);
+                g.DrawLine(pen, 46 * iconScale, 46 * iconScale, 58 * iconScale, 58 * iconScale);
             }
         }
         return bmp;

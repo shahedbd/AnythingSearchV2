@@ -120,6 +120,9 @@ public partial class MainForm
     {
         if (IsDisposed || Disposing) return;
 
+        // Get DPI scale factor
+        float dpiScale = this.DeviceDpi / 96f;
+
         flpRecentSearches.SuspendLayout();
         flpRecentSearches.Controls.Clear();
 
@@ -135,13 +138,13 @@ public partial class MainForm
         {
             var emptyPanel = new Panel
             {
-                Size = new Size(flpRecentSearches.Width - 30, 120),
+                Size = new Size(flpRecentSearches.Width - (int)(30 * dpiScale), (int)(120 * dpiScale)),
                 BackColor = Color.Transparent
             };
 
             var statusText = _searchManager.IsDatabaseReady
-                ? "No recent searches\n\nStart typing to search files instantly.\nSearches with 3+ characters will appear here."
-                : "No recent searches\n\nStart typing to search (building local index in background).\nSearches with 3+ characters will appear here.";
+                ? "No recent searches\n\nStart typing to search files instantly."
+                : "No recent searches\n\nStart typing to search (building local index in background).";
 
             var emptyLabel = new Label
             {
@@ -149,8 +152,8 @@ public partial class MainForm
                 Font = new Font("Segoe UI", 11F),
                 ForeColor = AppColors.TextMuted,
                 AutoSize = false,
-                Size = new Size(emptyPanel.Width, 100),
-                Location = new Point(10, 20),
+                Size = new Size(emptyPanel.Width, (int)(100 * dpiScale)),
+                Location = new Point((int)(10 * dpiScale), (int)(20 * dpiScale)),
                 TextAlign = ContentAlignment.TopCenter
             };
 
@@ -162,12 +165,15 @@ public partial class MainForm
 
         foreach (var item in recentSearches)
         {
-            var panelWidth = flpRecentSearches.ClientSize.Width - 25;
+            var panelWidth = flpRecentSearches.ClientSize.Width - (int)(25 * dpiScale);
+            var panelHeight = (int)(65 * dpiScale);
+            var padding = (int)(16 * dpiScale);
+            var btnSize = (int)(32 * dpiScale);
 
             var panel = new Panel
             {
-                Size = new Size(panelWidth, 60),
-                Margin = new Padding(5, 4, 5, 4),
+                Size = new Size(panelWidth, panelHeight),
+                Margin = new Padding((int)(5 * dpiScale), (int)(4 * dpiScale), (int)(5 * dpiScale), (int)(4 * dpiScale)),
                 BackColor = AppColors.Surface,
                 Cursor = Cursors.Hand
             };
@@ -175,31 +181,37 @@ public partial class MainForm
             panel.MouseEnter += (s, e) => panel.BackColor = AppColors.Selected;
             panel.MouseLeave += (s, e) => panel.BackColor = AppColors.Surface;
 
+            // Query label - the search term
             var lblQuery = new Label
             {
                 Text = item.Query,
                 Font = new Font("Segoe UI Semibold", 11F),
                 ForeColor = AppColors.Primary,
-                Location = new Point(16, 12),
-                AutoSize = true,
+                Location = new Point(padding, (int)(10 * dpiScale)),
+                Size = new Size(panelWidth - padding - btnSize - (int)(20 * dpiScale), (int)(22 * dpiScale)),
+                AutoSize = false,
+                AutoEllipsis = true,
                 Cursor = Cursors.Hand
             };
 
+            // Info label - results count and time (single line, no wrap)
             var lblInfo = new Label
             {
                 Text = $"{item.ResultCount:N0} results  •  {GetRelativeTime(item.Timestamp)}",
                 Font = new Font("Segoe UI", 9F),
                 ForeColor = AppColors.TextMuted,
-                Location = new Point(16, 34),
-                AutoSize = true,
+                Location = new Point(padding, (int)(34 * dpiScale)),
+                Size = new Size(panelWidth - padding - btnSize - (int)(20 * dpiScale), (int)(18 * dpiScale)),
+                AutoSize = false,
+                AutoEllipsis = true,
                 Cursor = Cursors.Hand
             };
 
             var btnRemove = new Button
             {
                 Text = "✕",
-                Size = new Size(32, 32),
-                Location = new Point(panelWidth - 45, 14),
+                Size = new Size(btnSize, btnSize),
+                Location = new Point(panelWidth - btnSize - (int)(12 * dpiScale), (panelHeight - btnSize) / 2),
                 FlatStyle = FlatStyle.Flat,
                 ForeColor = AppColors.TextMuted,
                 Cursor = Cursors.Hand,
