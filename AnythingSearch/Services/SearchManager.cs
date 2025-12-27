@@ -16,7 +16,6 @@ namespace AnythingSearch.Services;
 public class SearchManager : IDisposable
 {
     private readonly WindowsSearchService _windowsSearch;
-    private readonly SearchService _sqliteSearch;
     private readonly BackgroundIndexingService _indexingService;
     private readonly FileDatabase _database;
 
@@ -65,7 +64,6 @@ public class SearchManager : IDisposable
     {
         _database = database;
         _windowsSearch = new WindowsSearchService();
-        _sqliteSearch = new SearchService(database);
         _indexingService = new BackgroundIndexingService(database, settingsManager);
 
         // Subscribe to indexing events
@@ -123,6 +121,7 @@ public class SearchManager : IDisposable
 
     /// <summary>
     /// Perform a search using the best available source.
+    /// Supports multi-term searches (space-separated words)
     /// </summary>
     public async Task<(List<FileEntry> Results, SearchSource Source)> SearchAsync(
         string query,
@@ -137,7 +136,18 @@ public class SearchManager : IDisposable
         {
             try
             {
-                var (results, _) = await _sqliteSearch.SearchAsync(query, maxResults);
+                List<FileEntry> results;
+
+                // Use advanced search for multi-term queries
+                if (query.Contains(' '))
+                {
+                    results = await _database.SearchAdvancedAsync(query, maxResults);
+                }
+                else
+                {
+                    results = await _database.SearchAsync(query, maxResults);
+                }
+
                 return (results, SearchSource.SQLite);
             }
             catch (Exception ex)
@@ -162,7 +172,15 @@ public class SearchManager : IDisposable
             // Neither available - try SQLite anyway (might have partial data)
             try
             {
-                var (results, _) = await _sqliteSearch.SearchAsync(query, maxResults);
+                List<FileEntry> results;
+                if (query.Contains(' '))
+                {
+                    results = await _database.SearchAdvancedAsync(query, maxResults);
+                }
+                else
+                {
+                    results = await _database.SearchAsync(query, maxResults);
+                }
                 return (results, SearchSource.SQLite);
             }
             catch
@@ -197,7 +215,7 @@ public class SearchManager : IDisposable
     {
         if (_useSqlite)
         {
-            return await _sqliteSearch.GetTotalCountAsync();
+            return await _database.GetCountAsync();
         }
         else
         {

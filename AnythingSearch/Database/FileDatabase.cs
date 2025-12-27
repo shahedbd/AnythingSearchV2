@@ -291,22 +291,108 @@ public class FileDatabase : IDisposable
     }
 
     /// <summary>
-    /// Fast search with JOIN
+    /// Fast search with JOIN - improved relevance sorting like Everything
     /// </summary>
     public async Task<List<FileEntry>> SearchAsync(string query, int limit = 1000)
     {
         var results = new List<FileEntry>();
 
+        // Escape special SQL LIKE characters
+        var escapedQuery = query.Replace("[", "[[]").Replace("%", "[%]").Replace("_", "[_]");
+
+        // Search with relevance scoring:
+        // 1. Exact name match (highest priority)
+        // 2. Name starts with query
+        // 3. Name contains query
+        // 4. Path contains query (for finding files in matching folders)
+        // Order by: folders first, then by relevance, then alphabetically
         var sql = @"
-            SELECT f.Name, fo.Path || '\' || f.Name AS FullPath, f.Ext, f.Size, f.Modified, f.IsFolder 
+            SELECT f.Name, fo.Path || '\' || f.Name AS FullPath, f.Ext, f.Size, f.Modified, f.IsFolder,
+                CASE 
+                    WHEN f.Name = @exact THEN 1
+                    WHEN f.Name LIKE @startsWith ESCAPE '\' THEN 2
+                    WHEN f.Name LIKE @contains ESCAPE '\' THEN 3
+                    WHEN fo.Path LIKE @contains ESCAPE '\' THEN 4
+                    ELSE 5
+                END AS Relevance
             FROM Files f
             INNER JOIN Folders fo ON f.FolderId = fo.Id
-            WHERE f.Name LIKE @q
+            WHERE f.Name LIKE @contains ESCAPE '\' 
+               OR fo.Path LIKE @contains ESCAPE '\'
+            ORDER BY 
+                f.IsFolder DESC,
+                Relevance ASC,
+                LENGTH(f.Name) ASC,
+                f.Name ASC
             LIMIT @limit
         ";
 
         using var cmd = new SqliteCommand(sql, _connection);
-        cmd.Parameters.AddWithValue("@q", $"%{query}%");
+        cmd.Parameters.AddWithValue("@exact", query);
+        cmd.Parameters.AddWithValue("@startsWith", $"{escapedQuery}%");
+        cmd.Parameters.AddWithValue("@contains", $"%{escapedQuery}%");
+        cmd.Parameters.AddWithValue("@limit", limit);
+
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            results.Add(new FileEntry
+            {
+                Name = reader.GetString(0),
+                Path = reader.GetString(1),
+                Extension = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                Size = reader.GetInt64(3),
+                Modified = new DateTime(reader.GetInt64(4)),
+                IsFolder = reader.GetInt32(5) == 1
+            });
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Advanced search with multiple terms (space-separated)
+    /// Each term must match somewhere in name or path
+    /// </summary>
+    public async Task<List<FileEntry>> SearchAdvancedAsync(string query, int limit = 1000)
+    {
+        var results = new List<FileEntry>();
+
+        // Split query into terms
+        var terms = query.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+        if (terms.Length == 0)
+            return results;
+
+        // Build WHERE clause for all terms (AND logic)
+        var whereConditions = new List<string>();
+        var parameters = new Dictionary<string, string>();
+
+        for (int i = 0; i < terms.Length; i++)
+        {
+            var term = terms[i].Replace("[", "[[]").Replace("%", "[%]").Replace("_", "[_]");
+            var paramName = $"@t{i}";
+            parameters[paramName] = $"%{term}%";
+            whereConditions.Add($"(f.Name LIKE {paramName} ESCAPE '\\' OR fo.Path LIKE {paramName} ESCAPE '\\')");
+        }
+
+        var sql = $@"
+            SELECT f.Name, fo.Path || '\' || f.Name AS FullPath, f.Ext, f.Size, f.Modified, f.IsFolder
+            FROM Files f
+            INNER JOIN Folders fo ON f.FolderId = fo.Id
+            WHERE {string.Join(" AND ", whereConditions)}
+            ORDER BY 
+                f.IsFolder DESC,
+                LENGTH(f.Name) ASC,
+                f.Name ASC
+            LIMIT @limit
+        ";
+
+        using var cmd = new SqliteCommand(sql, _connection);
+        foreach (var param in parameters)
+        {
+            cmd.Parameters.AddWithValue(param.Key, param.Value);
+        }
         cmd.Parameters.AddWithValue("@limit", limit);
 
         using var reader = await cmd.ExecuteReaderAsync();
