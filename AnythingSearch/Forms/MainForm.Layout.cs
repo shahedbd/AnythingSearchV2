@@ -352,6 +352,11 @@ public partial class MainForm
 
     private void InitializeDataGridView(int contentTop, int contentHeight, float dpiScale, int padding)
     {
+        // Everything-like compact row height
+        int rowHeight = (int)(22 * dpiScale);  // Compact like Everything
+        int headerHeight = (int)(24 * dpiScale);
+        int iconPadding = (int)(2 * dpiScale);
+
         dgvResults = new DataGridView
         {
             Location = new Point(padding, contentTop),
@@ -361,57 +366,60 @@ public partial class MainForm
             AllowUserToDeleteRows = false,
             AllowUserToResizeRows = false,
             SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-            MultiSelect = false,
+            MultiSelect = true,  // Allow multi-select like Everything
             AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
             ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
             RowHeadersVisible = false,
-            RowTemplate = { Height = (int)(38 * dpiScale) },
+            RowTemplate = { Height = rowHeight },
             Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
             ContextMenuStrip = contextMenu,
             Visible = false,
-            BackgroundColor = AppColors.Surface,
-            BorderStyle = BorderStyle.None,
-            CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
-            GridColor = Color.FromArgb(240, 240, 240),
+            BackgroundColor = Color.White,
+            BorderStyle = BorderStyle.FixedSingle,
+            CellBorderStyle = DataGridViewCellBorderStyle.None,  // No cell borders like Everything
+            GridColor = Color.White,
+
+            // Default cell style - compact and clean
             DefaultCellStyle = new DataGridViewCellStyle
             {
-                BackColor = AppColors.Surface,
-                ForeColor = AppColors.TextPrimary,
-                SelectionBackColor = Color.FromArgb(230, 240, 255),
-                SelectionForeColor = AppColors.TextPrimary,
-                Font = new Font("Segoe UI", 9.5F),
-                Padding = new Padding((int)(10 * dpiScale), (int)(6 * dpiScale), (int)(10 * dpiScale), (int)(6 * dpiScale))
+                BackColor = Color.White,
+                ForeColor = Color.Black,
+                SelectionBackColor = Color.FromArgb(0, 120, 215),  // Windows blue selection
+                SelectionForeColor = Color.White,
+                Font = new Font("Segoe UI", 9F),
+                Padding = new Padding(iconPadding, 0, iconPadding, 0)
             },
+
+            // Alternating rows - subtle difference
             AlternatingRowsDefaultCellStyle = new DataGridViewCellStyle
             {
-                BackColor = Color.FromArgb(250, 251, 252),
-                ForeColor = AppColors.TextPrimary,
-                SelectionBackColor = Color.FromArgb(230, 240, 255),
-                SelectionForeColor = AppColors.TextPrimary,
-                Font = new Font("Segoe UI", 9.5F),
-                Padding = new Padding((int)(10 * dpiScale), (int)(6 * dpiScale), (int)(10 * dpiScale), (int)(6 * dpiScale))
+                BackColor = Color.FromArgb(252, 252, 252),  // Very subtle alternating
+                ForeColor = Color.Black,
+                SelectionBackColor = Color.FromArgb(0, 120, 215),
+                SelectionForeColor = Color.White,
+                Font = new Font("Segoe UI", 9F),
+                Padding = new Padding(iconPadding, 0, iconPadding, 0)
             },
+
+            // Header style - Everything-like
             ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle
             {
-                BackColor = Color.FromArgb(248, 249, 251),
-                ForeColor = Color.FromArgb(80, 80, 80),
-                Font = new Font("Segoe UI Semibold", 9F),
+                BackColor = Color.FromArgb(240, 240, 240),  // Light gray header
+                ForeColor = Color.Black,
+                Font = new Font("Segoe UI", 9F),
                 Alignment = DataGridViewContentAlignment.MiddleLeft,
-                Padding = new Padding((int)(10 * dpiScale), 0, (int)(10 * dpiScale), 0),
+                Padding = new Padding((int)(4 * dpiScale), 0, (int)(4 * dpiScale), 0),
                 WrapMode = DataGridViewTriState.False
             },
-            ColumnHeadersHeight = (int)(42 * dpiScale),
-            ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None,
+            ColumnHeadersHeight = headerHeight,
+            ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single,
             EnableHeadersVisualStyles = false
         };
 
-        // Custom paint for professional header with bottom border
-        dgvResults.CellPainting += DgvResults_CellPainting;
-
-        // Border around the entire grid
+        // Simple border paint
         dgvResults.Paint += (s, e) =>
         {
-            using var pen = new Pen(Color.FromArgb(218, 220, 224), 1);
+            using var pen = new Pen(Color.FromArgb(200, 200, 200), 1);
             e.Graphics.DrawRectangle(pen, 0, 0, dgvResults.Width - 1, dgvResults.Height - 1);
         };
 
@@ -420,110 +428,115 @@ public partial class MainForm
         dgvResults.DoubleClick += DgvResults_DoubleClick;
         dgvResults.CellMouseDown += DgvResults_CellMouseDown;
         dgvResults.CellFormatting += DgvResults_CellFormatting;
-        dgvResults.CellMouseEnter += (s, e) =>
-        {
-            if (e.RowIndex >= 0) dgvResults.Cursor = Cursors.Hand;
-        };
-        dgvResults.CellMouseLeave += (s, e) => dgvResults.Cursor = Cursors.Default;
+
+        // Keyboard navigation
+        dgvResults.KeyDown += DgvResults_KeyDown;
 
         this.Controls.Add(dgvResults);
     }
 
-    /// <summary>
-    /// Custom cell painting for professional header appearance
-    /// </summary>
-    private void DgvResults_CellPainting(object? sender, DataGridViewCellPaintingEventArgs e)
+    // <summary>
+    // Handle keyboard navigation in results grid
+    // </summary>
+    private void DgvResults_KeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.RowIndex == -1) // Header row
+        if (e.KeyCode == Keys.Enter && dgvResults.SelectedRows.Count > 0)
         {
-            e.PaintBackground(e.ClipBounds, true);
-
-            // Draw header text
-            using var brush = new SolidBrush(Color.FromArgb(70, 70, 70));
-            using var sf = new StringFormat
-            {
-                Alignment = e.ColumnIndex == 3 ? StringAlignment.Far : StringAlignment.Near, // Size column right-aligned
-                LineAlignment = StringAlignment.Center,
-                Trimming = StringTrimming.EllipsisCharacter,
-                FormatFlags = StringFormatFlags.NoWrap
-            };
-
-            var textRect = new Rectangle(
-                e.CellBounds.X + 12,
-                e.CellBounds.Y,
-                e.CellBounds.Width - 24,
-                e.CellBounds.Height
-            );
-
-            if (e.Value != null)
-            {
-                e.Graphics.DrawString(e.Value.ToString(),
-                    new Font("Segoe UI Semibold", 9F),
-                    brush,
-                    textRect,
-                    sf);
-            }
-
-            // Draw bottom border line for header
-            using var borderPen = new Pen(Color.FromArgb(218, 220, 224), 1);
-            e.Graphics.DrawLine(borderPen,
-                e.CellBounds.Left,
-                e.CellBounds.Bottom - 1,
-                e.CellBounds.Right,
-                e.CellBounds.Bottom - 1);
-
             e.Handled = true;
+            // Open the selected item
+            var row = dgvResults.SelectedRows[0];
+            var path = row.Cells["Path"].Value?.ToString();
+            if (!string.IsNullOrEmpty(path))
+            {
+                OpenFile(path);
+            }
         }
+        else if (e.KeyCode == Keys.Back || e.KeyCode == Keys.Escape)
+        {
+            // Return focus to search box
+            e.Handled = true;
+            txtSearch.Focus();
+            txtSearch.SelectionStart = txtSearch.Text.Length;
+        }
+    }
+
+    private void OpenFile(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                System.Diagnostics.Process.Start("explorer.exe", path);
+            }
+            else if (File.Exists(path))
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = path,
+                    UseShellExecute = true
+                });
+            }
+        }
+        catch { }
     }
 
     private void SetupDataGridColumns(float dpiScale = 1.0f)
     {
         dgvResults.Columns.Clear();
 
+        // Icon column - small like Everything (16x16 icons)
         var iconColumn = new DataGridViewImageColumn
         {
             Name = "Icon",
             HeaderText = "",
-            Width = (int)(40 * dpiScale),
-            MinimumWidth = (int)(40 * dpiScale),
+            Width = (int)(24 * dpiScale),
+            MinimumWidth = (int)(24 * dpiScale),
             ImageLayout = DataGridViewImageCellLayout.Zoom,
             Resizable = DataGridViewTriState.False,
             AutoSizeMode = DataGridViewAutoSizeColumnMode.None
         };
         dgvResults.Columns.Add(iconColumn);
 
+        // Name column
         dgvResults.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = "Name",
             HeaderText = "Name",
             FillWeight = 30,
-            MinimumWidth = (int)(180 * dpiScale)
+            MinimumWidth = (int)(150 * dpiScale)
         });
 
+        // Path column (Location in Everything)
         dgvResults.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = "Path",
-            HeaderText = "Location",
+            HeaderText = "Path",
             FillWeight = 50,
-            MinimumWidth = (int)(250 * dpiScale)
+            MinimumWidth = (int)(200 * dpiScale)
         });
 
+        // Size column - right aligned
         dgvResults.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = "Size",
             HeaderText = "Size",
-            Width = (int)(100 * dpiScale),
-            MinimumWidth = (int)(80 * dpiScale),
+            Width = (int)(80 * dpiScale),
+            MinimumWidth = (int)(60 * dpiScale),
             AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
-            DefaultCellStyle = new DataGridViewCellStyle { Alignment = DataGridViewContentAlignment.MiddleRight }
+            DefaultCellStyle = new DataGridViewCellStyle
+            {
+                Alignment = DataGridViewContentAlignment.MiddleRight,
+                Padding = new Padding(0, 0, (int)(8 * dpiScale), 0)
+            }
         });
 
+        // Date Modified column
         dgvResults.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = "Modified",
             HeaderText = "Date Modified",
-            Width = (int)(150 * dpiScale),
-            MinimumWidth = (int)(130 * dpiScale),
+            Width = (int)(140 * dpiScale),
+            MinimumWidth = (int)(100 * dpiScale),
             AutoSizeMode = DataGridViewAutoSizeColumnMode.None
         });
     }
