@@ -137,8 +137,10 @@ public partial class MainForm
             var status = _searchManager.IndexingStatus;
             UpdateTrayStatus($"{status.TotalItems:N0} items indexed");
 
+            // Show completion in status bar instead of popup
             lblSearchInfo.Text = $"✓ Index complete! {status.TotalItems:N0} items";
-            ShowTrayNotification("Index Ready", $"Local database built with {status.TotalItems:N0} items.");
+            lblWatchStatus.Text = $"✓ Local database ready ({status.TotalItems:N0} items)";
+            lblWatchStatus.ForeColor = AppColors.Success;
 
             if (chkAutoWatch.Checked)
                 StartFileWatcher();

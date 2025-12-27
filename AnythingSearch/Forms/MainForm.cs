@@ -212,18 +212,21 @@ public partial class MainForm : Form
         {
             UpdateSearchSourceUI();
 
-            // Notify user when switching to local database
+            // Show status in the UI instead of popup notification
             if (source == SearchSource.SQLite)
             {
-                ShowTrayNotification(
-                    "Local Database Ready",
-                    $"Now using local database for faster searches ({_searchManager.IndexingStatus.TotalItems:N0} items indexed)");
+                // Show success message in watch status area (will be visible for a few seconds)
+                lblWatchStatus.Text = $"✓ Local database ready! ({_searchManager.IndexingStatus.TotalItems:N0} items indexed)";
+                lblWatchStatus.ForeColor = AppColors.Success;
 
                 // Start file watcher now that database is ready
                 if (chkAutoWatch.Checked)
                 {
                     StartFileWatcher();
                 }
+
+                // Update tray icon tooltip (no balloon popup)
+                UpdateTrayStatus($"Ready - {_searchManager.IndexingStatus.TotalItems:N0} items");
             }
         });
     }

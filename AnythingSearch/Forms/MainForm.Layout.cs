@@ -14,7 +14,7 @@ public partial class MainForm
         // CRITICAL: DPI Scaling settings for Microsoft Store compliance
         this.AutoScaleMode = AutoScaleMode.Dpi;
         this.AutoScaleDimensions = new SizeF(96F, 96F);
-        
+
         this.Text = "Anything Search";
         this.Size = new Size(1150, 680);
         this.StartPosition = FormStartPosition.CenterScreen;
@@ -27,7 +27,7 @@ public partial class MainForm
         // Enable double buffering for smoother rendering
         this.DoubleBuffered = true;
         this.SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
-        
+
         // Use system font for proper DPI scaling
         this.Font = new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
 
@@ -323,47 +323,53 @@ public partial class MainForm
             AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
             ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
             RowHeadersVisible = false,
-            RowTemplate = { Height = 36 },
+            RowTemplate = { Height = 38 },
             Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
             ContextMenuStrip = contextMenu,
             Visible = false,
             BackgroundColor = AppColors.Surface,
             BorderStyle = BorderStyle.None,
             CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
-            GridColor = AppColors.Border,
+            GridColor = Color.FromArgb(240, 240, 240),
             DefaultCellStyle = new DataGridViewCellStyle
             {
                 BackColor = AppColors.Surface,
                 ForeColor = AppColors.TextPrimary,
-                SelectionBackColor = AppColors.Selected,
+                SelectionBackColor = Color.FromArgb(230, 240, 255),
                 SelectionForeColor = AppColors.TextPrimary,
                 Font = new Font("Segoe UI", 9.5F),
-                Padding = new Padding(8, 4, 8, 4)
+                Padding = new Padding(10, 6, 10, 6)
             },
             AlternatingRowsDefaultCellStyle = new DataGridViewCellStyle
             {
-                BackColor = Color.FromArgb(252, 252, 252),
+                BackColor = Color.FromArgb(250, 251, 252),
                 ForeColor = AppColors.TextPrimary,
-                SelectionBackColor = AppColors.Selected,
+                SelectionBackColor = Color.FromArgb(230, 240, 255),
                 SelectionForeColor = AppColors.TextPrimary,
                 Font = new Font("Segoe UI", 9.5F),
-                Padding = new Padding(8, 4, 8, 4)
+                Padding = new Padding(10, 6, 10, 6)
             },
             ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle
             {
-                BackColor = AppColors.Background,
-                ForeColor = AppColors.TextSecondary,
-                Font = new Font("Segoe UI Semibold", 9.5F),
+                BackColor = Color.FromArgb(248, 249, 251),
+                ForeColor = Color.FromArgb(80, 80, 80),
+                Font = new Font("Segoe UI Semibold", 9F),
                 Alignment = DataGridViewContentAlignment.MiddleLeft,
-                Padding = new Padding(8, 0, 8, 0)
+                Padding = new Padding(10, 0, 10, 0),
+                WrapMode = DataGridViewTriState.False
             },
-            ColumnHeadersHeight = 44,
+            ColumnHeadersHeight = 42,
+            ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None,
             EnableHeadersVisualStyles = false
         };
 
+        // Custom paint for professional header with bottom border
+        dgvResults.CellPainting += DgvResults_CellPainting;
+
+        // Border around the entire grid
         dgvResults.Paint += (s, e) =>
         {
-            using var pen = new Pen(AppColors.Border, 1);
+            using var pen = new Pen(Color.FromArgb(218, 220, 224), 1);
             e.Graphics.DrawRectangle(pen, 0, 0, dgvResults.Width - 1, dgvResults.Height - 1);
         };
 
@@ -379,6 +385,53 @@ public partial class MainForm
         dgvResults.CellMouseLeave += (s, e) => dgvResults.Cursor = Cursors.Default;
 
         this.Controls.Add(dgvResults);
+    }
+
+    /// <summary>
+    /// Custom cell painting for professional header appearance
+    /// </summary>
+    private void DgvResults_CellPainting(object? sender, DataGridViewCellPaintingEventArgs e)
+    {
+        if (e.RowIndex == -1) // Header row
+        {
+            e.PaintBackground(e.ClipBounds, true);
+
+            // Draw header text
+            using var brush = new SolidBrush(Color.FromArgb(70, 70, 70));
+            using var sf = new StringFormat
+            {
+                Alignment = e.ColumnIndex == 3 ? StringAlignment.Far : StringAlignment.Near, // Size column right-aligned
+                LineAlignment = StringAlignment.Center,
+                Trimming = StringTrimming.EllipsisCharacter,
+                FormatFlags = StringFormatFlags.NoWrap
+            };
+
+            var textRect = new Rectangle(
+                e.CellBounds.X + 12,
+                e.CellBounds.Y,
+                e.CellBounds.Width - 24,
+                e.CellBounds.Height
+            );
+
+            if (e.Value != null)
+            {
+                e.Graphics.DrawString(e.Value.ToString(),
+                    new Font("Segoe UI Semibold", 9F),
+                    brush,
+                    textRect,
+                    sf);
+            }
+
+            // Draw bottom border line for header
+            using var borderPen = new Pen(Color.FromArgb(218, 220, 224), 1);
+            e.Graphics.DrawLine(borderPen,
+                e.CellBounds.Left,
+                e.CellBounds.Bottom - 1,
+                e.CellBounds.Right,
+                e.CellBounds.Bottom - 1);
+
+            e.Handled = true;
+        }
     }
 
     private void SetupDataGridColumns()
