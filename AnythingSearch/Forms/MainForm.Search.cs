@@ -8,6 +8,10 @@ namespace AnythingSearch.Forms;
 /// </summary>
 public partial class MainForm
 {
+    // Track the last saved search to avoid duplicates
+    private string _lastSavedSearch = "";
+    private DateTime _lastSearchTime = DateTime.MinValue;
+
     #region Search Event Handlers
 
     private async void TxtSearch_TextChanged(object? sender, EventArgs e)
@@ -31,17 +35,32 @@ public partial class MainForm
         }
 
         btnClearSearch.Visible = true;
-        pnlRecentSearches.Visible = false;
-        dgvResults.Visible = true;
 
+        // Don't search until at least 2 characters
+        if (searchText.Length < 2)
+        {
+            lblSearchInfo.Text = "Type at least 2 characters to search...";
+            return;
+        }
+
+        // Cancel any pending search
         _searchCts?.Cancel();
         _searchCts = new CancellationTokenSource();
         var currentToken = _searchCts.Token;
 
-        try { await Task.Delay(200, currentToken); }
+        // Show "searching" indicator immediately
+        lblSearchInfo.Text = "Searching...";
+
+        // Debounce: wait for user to stop typing (400ms)
+        // This prevents searches on every keystroke
+        try { await Task.Delay(400, currentToken); }
         catch (TaskCanceledException) { return; }
 
         if (currentToken.IsCancellationRequested) return;
+
+        // Now perform the search
+        pnlRecentSearches.Visible = false;
+        dgvResults.Visible = true;
 
         await PerformSearchAsync(searchText, currentToken);
     }
@@ -57,8 +76,8 @@ public partial class MainForm
 
         var displayResults = results.Take(1000).ToList();
 
-        dgvResults.Rows.Clear();
         dgvResults.SuspendLayout();
+        dgvResults.Rows.Clear();
 
         try
         {
@@ -77,8 +96,37 @@ public partial class MainForm
 
         sw.Stop();
 
+        // Only save to recent searches if:
+        // 1. At least 3 characters
+        // 2. Different from last saved search (not a prefix of it or vice versa)
+        // 3. At least 2 seconds since last save (prevents rapid saves while typing)
         if (searchText.Length >= 3)
-            _recentSearchService.AddSearch(searchText, results.Count);
+        {
+            var now = DateTime.Now;
+            var timeSinceLastSave = (now - _lastSearchTime).TotalSeconds;
+
+            // Check if this is a genuinely new search (not just typing more characters)
+            bool isNewSearch = string.IsNullOrEmpty(_lastSavedSearch) ||
+                               (!searchText.StartsWith(_lastSavedSearch, StringComparison.OrdinalIgnoreCase) &&
+                                !_lastSavedSearch.StartsWith(searchText, StringComparison.OrdinalIgnoreCase));
+
+            // Save if it's a new search OR if user has paused typing for 2+ seconds
+            if (isNewSearch || timeSinceLastSave >= 2.0)
+            {
+                // Update the existing entry if it's a continuation of the same search
+                if (!string.IsNullOrEmpty(_lastSavedSearch) &&
+                    (searchText.StartsWith(_lastSavedSearch, StringComparison.OrdinalIgnoreCase) ||
+                     _lastSavedSearch.StartsWith(searchText, StringComparison.OrdinalIgnoreCase)))
+                {
+                    // Remove the old partial search
+                    _recentSearchService.RemoveSearch(_lastSavedSearch);
+                }
+
+                _recentSearchService.AddSearch(searchText, results.Count);
+                _lastSavedSearch = searchText;
+                _lastSearchTime = now;
+            }
+        }
 
         // Show search source in results
         var sourceText = source switch
@@ -96,10 +144,28 @@ public partial class MainForm
     private void TxtSearch_KeyDown(object? sender, KeyEventArgs e)
     {
         if (e.KeyCode == Keys.Enter)
+        {
             e.SuppressKeyPress = true;
+            // On Enter, save the current search immediately
+            var searchText = txtSearch.Text;
+            if (searchText.Length >= 3 && searchText != "Search files and folders...")
+            {
+                // Remove any partial searches that led to this one
+                if (!string.IsNullOrEmpty(_lastSavedSearch) &&
+                    searchText.StartsWith(_lastSavedSearch, StringComparison.OrdinalIgnoreCase))
+                {
+                    _recentSearchService.RemoveSearch(_lastSavedSearch);
+                }
+                _recentSearchService.AddSearch(searchText, dgvResults.Rows.Count);
+                _lastSavedSearch = searchText;
+                _lastSearchTime = DateTime.Now;
+            }
+        }
         else if (e.KeyCode == Keys.Escape)
         {
             e.SuppressKeyPress = true;
+            // Reset tracking when user escapes
+            _lastSavedSearch = "";
             MinimizeToTray();
         }
         else if (e.KeyCode == Keys.Down && dgvResults.Visible && dgvResults.Rows.Count > 0)
@@ -118,6 +184,8 @@ public partial class MainForm
 
     private void LoadRecentSearches()
     {
+        // Reset search tracking when showing recent searches
+        _lastSavedSearch = "";
         if (IsDisposed || Disposing) return;
 
         // Get DPI scale factor
