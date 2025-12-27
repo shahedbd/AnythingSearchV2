@@ -15,10 +15,19 @@ public partial class MainForm
         this.AutoScaleMode = AutoScaleMode.Dpi;
         this.AutoScaleDimensions = new SizeF(96F, 96F);
 
+        // Get DPI scale factor for initial size calculation
+        float dpiScale = this.DeviceDpi / 96f;
+
+        // Base size at 100% DPI, scales up for higher DPI
+        int baseWidth = 1200;
+        int baseHeight = 750;
+        int minWidth = 950;
+        int minHeight = 600;
+
         this.Text = "Anything Search";
-        this.Size = new Size(1150, 680);
+        this.Size = new Size((int)(baseWidth * dpiScale), (int)(baseHeight * dpiScale));
         this.StartPosition = FormStartPosition.CenterScreen;
-        this.MinimumSize = new Size(900, 550);
+        this.MinimumSize = new Size((int)(minWidth * dpiScale), (int)(minHeight * dpiScale));
         this.BackColor = AppColors.Background;
         this.FormClosing += MainForm_FormClosing;
         this.Resize += MainForm_Resize;
