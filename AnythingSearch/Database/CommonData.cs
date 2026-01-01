@@ -3,7 +3,7 @@
 public static class CommonData
 {
     public static string ApplicationName = "Anything Search";
-    public static string ApplicationVersion = "1.0.2.0";
+    public static string ApplicationVersion = "1.0.3.0";
     public static string EmailAddress = "shahedbddev@gmail.com";
 
 

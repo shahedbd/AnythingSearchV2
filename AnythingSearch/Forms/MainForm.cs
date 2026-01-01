@@ -88,7 +88,7 @@ public partial class MainForm : Form
 
         InitializeComponent();
         InitializeSystemTray();
-        InitializeAsync();
+        InitializeAsync();      
     }
 
     #endregion
@@ -131,6 +131,8 @@ public partial class MainForm : Form
 
             // Update tray status
             UpdateTrayStatus(_searchManager.GetStatusMessage());
+
+            await StartupService.ExecuteStartupTaskAsync();
         }
         catch (Exception ex)
         {

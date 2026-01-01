@@ -1,6 +1,7 @@
 ﻿
 
 C:\Users\User\AppData\Local\FileSearch
+C:\Users\User\AppData\Local\Packages\4789ZeroByte.AnythingSearch_gvheqymwk6zrr\LocalCache\Local\AnythingSearch
 
 
 https://github.com/shahedbd/FileSearch

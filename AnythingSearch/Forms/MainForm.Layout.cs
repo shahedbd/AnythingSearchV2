@@ -306,44 +306,54 @@ public partial class MainForm
         {
             Location = new Point(padding, contentTop),
             Size = new Size(this.ClientSize.Width - padding * 2, contentHeight),
-            BackColor = AppColors.Surface,
+            BackColor = Color.White,
             Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
             Visible = true
         };
-        pnlRecentSearches.Paint += Panel_PaintBorder;
 
-        lblRecentTitle = new Label
+        // Subtle border
+        pnlRecentSearches.Paint += (s, e) =>
         {
-            Location = new Point(padding, (int)(18 * dpiScale)),
-            Size = new Size((int)(300 * dpiScale), (int)(28 * dpiScale)),
-            Text = "Recent Searches",
-            Font = new Font("Segoe UI Semibold", 14F),
-            ForeColor = AppColors.TextPrimary
+            using var pen = new Pen(Color.FromArgb(225, 225, 225), 1);
+            e.Graphics.DrawRectangle(pen, 0, 0, pnlRecentSearches.Width - 1, pnlRecentSearches.Height - 1);
         };
 
+        // Header title - clean, professional
+        lblRecentTitle = new Label
+        {
+            Location = new Point((int)(18 * dpiScale), (int)(14 * dpiScale)),
+            Size = new Size((int)(200 * dpiScale), (int)(24 * dpiScale)),
+            Text = "Recent Searches",
+            Font = new Font("Segoe UI", 12F, FontStyle.Regular),
+            ForeColor = Color.FromArgb(50, 50, 50)
+        };
+
+        // Clear All link - subtle
         lnkClearRecent = new LinkLabel
         {
-            Location = new Point(pnlRecentSearches.Width - (int)(100 * dpiScale), (int)(22 * dpiScale)),
-            Size = new Size((int)(80 * dpiScale), (int)(20 * dpiScale)),
+            Location = new Point(pnlRecentSearches.Width - (int)(80 * dpiScale), (int)(16 * dpiScale)),
+            Size = new Size((int)(65 * dpiScale), (int)(20 * dpiScale)),
             Text = "Clear All",
-            Font = new Font("Segoe UI", 9.5F),
-            LinkColor = AppColors.Primary,
-            ActiveLinkColor = AppColors.PrimaryDark,
+            Font = new Font("Segoe UI", 9F),
+            LinkColor = Color.FromArgb(0, 102, 204),
+            ActiveLinkColor = Color.FromArgb(0, 80, 160),
+            LinkBehavior = LinkBehavior.HoverUnderline,
             Anchor = AnchorStyles.Top | AnchorStyles.Right
         };
         lnkClearRecent.LinkClicked += LnkClearRecent_LinkClicked;
 
-        int flowPanelTop = (int)(55 * dpiScale);
+        // Flow panel for search items
+        int flowPanelTop = (int)(48 * dpiScale);
         flpRecentSearches = new FlowLayoutPanel
         {
-            Location = new Point((int)(15 * dpiScale), flowPanelTop),
-            Size = new Size(pnlRecentSearches.Width - (int)(30 * dpiScale), contentHeight - flowPanelTop - (int)(15 * dpiScale)),
+            Location = new Point((int)(10 * dpiScale), flowPanelTop),
+            Size = new Size(pnlRecentSearches.Width - (int)(20 * dpiScale), contentHeight - flowPanelTop - (int)(10 * dpiScale)),
             AutoScroll = true,
             FlowDirection = FlowDirection.TopDown,
             WrapContents = false,
-            BackColor = AppColors.Surface,
+            BackColor = Color.White,
             Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
-            Padding = new Padding((int)(5 * dpiScale))
+            Padding = new Padding((int)(2 * dpiScale))
         };
 
         pnlRecentSearches.Controls.AddRange(new Control[] { lblRecentTitle, lnkClearRecent, flpRecentSearches });
@@ -428,13 +438,10 @@ public partial class MainForm
         dgvResults.DoubleClick += DgvResults_DoubleClick;
         dgvResults.CellMouseDown += DgvResults_CellMouseDown;
         dgvResults.CellFormatting += DgvResults_CellFormatting;
-
-        // Keyboard navigation
         dgvResults.KeyDown += DgvResults_KeyDown;
 
         this.Controls.Add(dgvResults);
     }
-
     // <summary>
     // Handle keyboard navigation in results grid
     // </summary>
@@ -459,7 +466,6 @@ public partial class MainForm
             txtSearch.SelectionStart = txtSearch.Text.Length;
         }
     }
-
     private void OpenFile(string path)
     {
         try

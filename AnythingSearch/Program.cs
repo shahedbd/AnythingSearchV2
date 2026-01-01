@@ -1,3 +1,5 @@
+using AnythingSearch.Helper;
+
 namespace AnythingSearch.Forms;
 
 internal static class Program
@@ -8,6 +10,11 @@ internal static class Program
     [STAThread]
     static void Main()
     {
+        if (CommonHelper.PriorProcess() != null)
+        {
+            MessageBox.Show("Another instance of the app is already running.");
+            return;
+        }
         // Enable high DPI support for Windows 10/11
         // This is CRITICAL for Microsoft Store approval at 150% scaling
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);

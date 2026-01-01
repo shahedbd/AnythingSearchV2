@@ -61,5 +61,17 @@ namespace AnythingSearch.Helper
 
             await Task.Run(() => Process.Start(_ProcessStartInfo));
         }
+        public static Process PriorProcess()
+        {
+            Process curr = Process.GetCurrentProcess();
+            Process[] procs = Process.GetProcessesByName(curr.ProcessName);
+            foreach (Process p in procs)
+            {
+                if ((p.Id != curr.Id) &&
+                    (p.MainModule.FileName == curr.MainModule.FileName))
+                    return p;
+            }
+            return null;
+        }
     }
 }

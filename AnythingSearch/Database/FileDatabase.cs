@@ -1,7 +1,5 @@
-﻿using System.Data;
+﻿using AnythingSearch.Models;
 using Microsoft.Data.Sqlite;
-using AnythingSearch.Models;
-using System.Text;
 using System.Collections.Concurrent;
 
 namespace AnythingSearch.Database;
@@ -297,8 +295,12 @@ public class FileDatabase : IDisposable
     {
         var results = new List<FileEntry>();
 
-        // Escape special SQL LIKE characters
-        var escapedQuery = query.Replace("[", "[[]").Replace("%", "[%]").Replace("_", "[_]");
+        // Escape special SQL LIKE characters using backslash escape
+        // The ESCAPE '\' clause tells SQLite to use \ as escape character
+        var escapedQuery = query
+            .Replace("\\", "\\\\")  // Escape backslash first
+            .Replace("%", "\\%")    // Escape percent
+            .Replace("_", "\\_");   // Escape underscore
 
         // Search with relevance scoring:
         // 1. Exact name match (highest priority)
@@ -357,20 +359,24 @@ public class FileDatabase : IDisposable
     public async Task<List<FileEntry>> SearchAdvancedAsync(string query, int limit = 1000)
     {
         var results = new List<FileEntry>();
-
+        
         // Split query into terms
         var terms = query.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-
+        
         if (terms.Length == 0)
             return results;
 
         // Build WHERE clause for all terms (AND logic)
         var whereConditions = new List<string>();
         var parameters = new Dictionary<string, string>();
-
+        
         for (int i = 0; i < terms.Length; i++)
         {
-            var term = terms[i].Replace("[", "[[]").Replace("%", "[%]").Replace("_", "[_]");
+            // Escape special SQL LIKE characters using backslash
+            var term = terms[i]
+                .Replace("\\", "\\\\")
+                .Replace("%", "\\%")
+                .Replace("_", "\\_");
             var paramName = $"@t{i}";
             parameters[paramName] = $"%{term}%";
             whereConditions.Add($"(f.Name LIKE {paramName} ESCAPE '\\' OR fo.Path LIKE {paramName} ESCAPE '\\')");
@@ -426,7 +432,7 @@ public class FileDatabase : IDisposable
     public async Task InsertSingleAsync(FileEntry entry)
     {
         var folderPath = Path.GetDirectoryName(entry.Path) ?? "";
-
+        
         // Ensure folder exists
         var folderId = await GetOrCreateFolderIdAsync(folderPath);
 

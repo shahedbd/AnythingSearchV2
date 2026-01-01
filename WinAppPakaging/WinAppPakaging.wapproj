@@ -67,7 +67,7 @@
     <HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
     <PackageCertificateThumbprint>AE6A1E2FEAF586C82C373FBFFC918ED9443FB659</PackageCertificateThumbprint>
     <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
-    <EntryPointProjectUniqueName>..\FileSearch.Client\FileSearch.Client.csproj</EntryPointProjectUniqueName>
+    <EntryPointProjectUniqueName>..\AnythingSearch\AnythingSearch.csproj</EntryPointProjectUniqueName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x86'">
     <AppxBundle>Always</AppxBundle>
@@ -164,6 +164,6 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.22621.756" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\FileSearch.Client\FileSearch.Client.csproj" />
+    <ProjectReference Include="..\AnythingSearch\AnythingSearch.csproj" />
   </ItemGroup>
 </Project>
