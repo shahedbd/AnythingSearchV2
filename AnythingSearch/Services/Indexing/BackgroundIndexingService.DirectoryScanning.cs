@@ -10,11 +10,19 @@ namespace AnythingSearch.Services;
 public partial class BackgroundIndexingService
 {
     /// <summary>
+    /// One unit of work for the parallel scan. When a directory is split for parallelism the
+    /// parent is queued as <see cref="Recursive"/> = false so its subtree is not walked twice -
+    /// once by the parent root and once by the child root - which used to insert every item
+    /// under a split directory two or more times.
+    /// </summary>
+    private readonly record struct ScanRoot(DirectoryInfo Directory, bool Recursive);
+
+    /// <summary>
     /// Collect all root directories, splitting large ones for better parallelism
     /// </summary>
-    private List<DirectoryInfo> CollectRootDirectories()
+    private List<ScanRoot> CollectRootDirectories()
     {
-        var result = new List<DirectoryInfo>();
+        var result = new List<ScanRoot>();
 
         var downloadsPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
@@ -29,49 +37,16 @@ public partial class BackgroundIndexingService
             if (drive.Name.ToUpper() == "C:\\")
             {
                 if (Directory.Exists(downloadsPath))
-                    result.Insert(0, new DirectoryInfo(downloadsPath));
+                    result.Insert(0, new ScanRoot(new DirectoryInfo(downloadsPath), true));
 
-                if (_settingsManager.Settings.IndexSystemDrive)
-                {
-                    try
-                    {
-                        var rootDirs = drive.RootDirectory.GetDirectories()
-                            .Where(d => !IsExcluded(d.FullName) &&
-                                       !d.FullName.Equals(downloadsPath, StringComparison.OrdinalIgnoreCase))
-                            .ToList();
+                if (!_settingsManager.Settings.IndexSystemDrive)
+                    continue;
 
-                        foreach (var rootDir in rootDirs)
-                        {
-                            SplitLargeDirectory(rootDir, result);
-                        }
-                    }
-                    catch { }
-                }
+                AddDriveRoots(drive, result, downloadsPath);
             }
             else
             {
-                try
-                {
-                    var rootDirs = drive.RootDirectory.GetDirectories()
-                        .Where(d => !IsExcluded(d.FullName))
-                        .ToList();
-
-                    if (rootDirs.Count > 0)
-                    {
-                        foreach (var rootDir in rootDirs)
-                        {
-                            SplitLargeDirectory(rootDir, result);
-                        }
-                    }
-                    else
-                    {
-                        result.Add(drive.RootDirectory);
-                    }
-                }
-                catch
-                {
-                    result.Add(drive.RootDirectory);
-                }
+                AddDriveRoots(drive, result, null);
             }
         }
 
@@ -79,40 +54,72 @@ public partial class BackgroundIndexingService
     }
 
     /// <summary>
+    /// Queue every top-level directory of a drive (split further when large), plus the drive
+    /// root itself for the files that sit directly on it.
+    /// </summary>
+    private void AddDriveRoots(DriveInfo drive, List<ScanRoot> result, string? skipPath)
+    {
+        try
+        {
+            var rootDirs = drive.RootDirectory.GetDirectories()
+                .Where(d => !IsExcluded(d.FullName) &&
+                            (skipPath == null || !d.FullName.Equals(skipPath, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
+            foreach (var rootDir in rootDirs)
+            {
+                SplitLargeDirectory(rootDir, result);
+            }
+
+            // Files directly under the drive root (never covered by the loop above)
+            result.Add(new ScanRoot(drive.RootDirectory, rootDirs.Count == 0));
+        }
+        catch
+        {
+            result.Add(new ScanRoot(drive.RootDirectory, true));
+        }
+    }
+
+    /// <summary>
     /// Split large directories into subdirectories for better parallelism
     /// </summary>
-    private void SplitLargeDirectory(DirectoryInfo dir, List<DirectoryInfo> result)
+    private void SplitLargeDirectory(DirectoryInfo dir, List<ScanRoot> result)
     {
         try
         {
             var subDirs = dir.GetDirectories();
             if (subDirs.Length > 5)
             {
-                // Add subdirectories for parallel processing
-                result.AddRange(subDirs.Where(d => !IsExcluded(d.FullName)));
-                // Also add parent to process its files
-                result.Add(dir);
+                // Each subdirectory becomes its own recursive root...
+                foreach (var subDir in subDirs)
+                {
+                    if (!IsExcluded(subDir.FullName))
+                        result.Add(new ScanRoot(subDir, true));
+                }
+
+                // ...so the parent only contributes its own entry and its own files
+                result.Add(new ScanRoot(dir, false));
             }
             else
             {
-                result.Add(dir);
+                result.Add(new ScanRoot(dir, true));
             }
         }
         catch
         {
-            result.Add(dir);
+            result.Add(new ScanRoot(dir, true));
         }
     }
 
     /// <summary>
     /// Ultra-fast directory scanning optimized for throughput
     /// </summary>
-    private void ScanDirectoryFast(DirectoryInfo root, CancellationToken cancellationToken)
+    private void ScanDirectoryFast(ScanRoot root, CancellationToken cancellationToken)
     {
         if (cancellationToken.IsCancellationRequested) return;
 
         var directoryStack = new Stack<DirectoryInfo>(100);
-        directoryStack.Push(root);
+        directoryStack.Push(root.Directory);
 
         var writer = _channel!.Writer;
         var localFolderCount = 0;
@@ -128,23 +135,26 @@ public partial class BackgroundIndexingService
 
                 _currentPath = fullName;
 
-                // Add folder entry
-                var folderEntry = new FileEntry
+                // Add folder entry (not for a drive root - it has no parent folder to live in)
+                if (currentDir.Parent != null)
                 {
-                    Name = currentDir.Name,
-                    Path = fullName,
-                    Extension = "",
-                    Size = 0,
-                    Modified = currentDir.LastWriteTime,
-                    IsFolder = true
-                };
+                    var folderEntry = new FileEntry
+                    {
+                        Name = currentDir.Name,
+                        Path = fullName,
+                        Extension = "",
+                        Size = 0,
+                        Modified = currentDir.LastWriteTime,
+                        IsFolder = true
+                    };
 
-                while (!writer.TryWrite(folderEntry))
-                {
-                    if (cancellationToken.IsCancellationRequested) return;
-                    Thread.SpinWait(100);
+                    while (!writer.TryWrite(folderEntry))
+                    {
+                        if (cancellationToken.IsCancellationRequested) return;
+                        Thread.SpinWait(100);
+                    }
+                    localFolderCount++;
                 }
-                localFolderCount++;
 
                 // Process files
                 try
@@ -183,7 +193,10 @@ public partial class BackgroundIndexingService
                 }
                 catch { }
 
-                // Add subdirectories
+                // Add subdirectories (skipped for a files-only root - they are scanned by
+                // their own ScanRoot entry)
+                if (!root.Recursive) continue;
+
                 try
                 {
                     foreach (var subDir in currentDir.EnumerateDirectories())

@@ -105,6 +105,7 @@ public partial class MainForm : Form
         _searchManager.ProgressChanged += OnIndexingProgress;
         _searchManager.IndexingCompleted += OnIndexingCompleted;
         _fileWatcher.StatusChanged += OnWatcherStatus;
+        _searchManager.CatchUpStatusChanged += OnWatcherStatus;
 
         // Show initial status
         lblSearchInfo.Text = "Initializing...";
@@ -129,6 +130,15 @@ public partial class MainForm : Form
             if (_searchManager.IsDatabaseReady && chkAutoWatch.Checked)
             {
                 StartFileWatcher();
+            }
+
+            // Pick up everything that changed while the app was closed - the watcher above only
+            // reports changes from now on. Runs in the background, never blocks the UI.
+            if (_searchManager.IsDatabaseReady)
+            {
+                _ = _searchManager.RunCatchUpAsync().ContinueWith(
+                    _ => SafeInvoke(() => _ = UpdateTotalCountAsync()),
+                    TaskScheduler.Default);
             }
 
             // Update tray status
@@ -287,6 +297,7 @@ public partial class MainForm : Form
             _searchManager.ProgressChanged -= OnIndexingProgress;
             _searchManager.IndexingCompleted -= OnIndexingCompleted;
             _fileWatcher.StatusChanged -= OnWatcherStatus;
+            _searchManager.CatchUpStatusChanged -= OnWatcherStatus;
 
             if (_notifyIcon != null) { _notifyIcon.Visible = false; _notifyIcon.Dispose(); }
             _trayContextMenu?.Dispose();

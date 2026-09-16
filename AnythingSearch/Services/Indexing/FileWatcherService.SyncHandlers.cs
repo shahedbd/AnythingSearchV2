@@ -5,20 +5,22 @@ namespace AnythingSearch.Services;
 /// <summary>
 /// Per-change-type database sync logic for FileWatcherService, plus the ignore-list filters
 /// shared by the scanner in FileWatcherService.ChangeQueue.cs.
+///
+/// Every handler resolves the path against the real file system before writing. OS events are
+/// only a hint that "something happened here" - they arrive out of order, are coalesced by
+/// Windows, and are lost when the watcher buffer overflows, so the event type alone must never
+/// decide whether a row is inserted or deleted.
 /// </summary>
 public partial class FileWatcherService
 {
     private async Task HandleCreatedAsync(string path)
     {
-        try
+        if (Directory.Exists(path))
         {
-            // Check if already exists in database
-            if (await _database.ExistsAsync(path))
-                return;
+            var dir = new DirectoryInfo(path);
 
-            if (Directory.Exists(path))
+            if (!await _database.ExistsAsync(path))
             {
-                var dir = new DirectoryInfo(path);
                 await _database.InsertSingleAsync(new FileEntry
                 {
                     Name = dir.Name,
@@ -28,28 +30,28 @@ public partial class FileWatcherService
                     Modified = dir.LastWriteTime,
                     IsFolder = true
                 });
+            }
 
-                // Also index files inside the new directory
-                await IndexNewDirectoryAsync(dir);
-            }
-            else if (File.Exists(path))
-            {
-                var file = new FileInfo(path);
-                if (!IsExcludedExtension(file.Extension))
-                {
-                    await _database.InsertSingleAsync(new FileEntry
-                    {
-                        Name = file.Name,
-                        Path = file.FullName,
-                        Extension = file.Extension.TrimStart('.'),
-                        Size = file.Length,
-                        Modified = file.LastWriteTime,
-                        IsFolder = false
-                    });
-                }
-            }
+            // Also index files inside the new directory
+            await IndexNewDirectoryAsync(dir);
         }
-        catch { }
+        else if (File.Exists(path))
+        {
+            var file = new FileInfo(path);
+            if (IsExcludedExtension(file.Extension)) return;
+
+            if (await _database.ExistsAsync(path)) return;
+
+            await _database.InsertSingleAsync(new FileEntry
+            {
+                Name = file.Name,
+                Path = file.FullName,
+                Extension = file.Extension.TrimStart('.'),
+                Size = file.Length,
+                Modified = file.LastWriteTime,
+                IsFolder = false
+            });
+        }
     }
 
     /// <summary>
@@ -57,37 +59,36 @@ public partial class FileWatcherService
     /// </summary>
     private async Task IndexNewDirectoryAsync(DirectoryInfo dir)
     {
-        try
+        foreach (var file in dir.EnumerateFiles())
         {
-            // Index files in this directory
-            foreach (var file in dir.EnumerateFiles())
+            try
             {
-                try
-                {
-                    if (IsExcludedExtension(file.Extension))
-                        continue;
+                if (IsExcludedExtension(file.Extension)) continue;
+                if (ShouldIgnore(file.FullName)) continue;
+                if (await _database.ExistsAsync(file.FullName)) continue;
 
-                    await _database.InsertSingleAsync(new FileEntry
-                    {
-                        Name = file.Name,
-                        Path = file.FullName,
-                        Extension = file.Extension.TrimStart('.'),
-                        Size = file.Length,
-                        Modified = file.LastWriteTime,
-                        IsFolder = false
-                    });
-                }
-                catch { }
+                await _database.InsertSingleAsync(new FileEntry
+                {
+                    Name = file.Name,
+                    Path = file.FullName,
+                    Extension = file.Extension.TrimStart('.'),
+                    Size = file.Length,
+                    Modified = file.LastWriteTime,
+                    IsFolder = false
+                });
             }
+            catch { }
+        }
 
-            // Recursively index subdirectories
-            foreach (var subDir in dir.EnumerateDirectories())
+        // Recursively index subdirectories
+        foreach (var subDir in dir.EnumerateDirectories())
+        {
+            try
             {
-                try
-                {
-                    if (ShouldIgnore(subDir.FullName))
-                        continue;
+                if (ShouldIgnore(subDir.FullName)) continue;
 
+                if (!await _database.ExistsAsync(subDir.FullName))
+                {
                     await _database.InsertSingleAsync(new FileEntry
                     {
                         Name = subDir.Name,
@@ -97,54 +98,66 @@ public partial class FileWatcherService
                         Modified = subDir.LastWriteTime,
                         IsFolder = true
                     });
-
-                    await IndexNewDirectoryAsync(subDir);
                 }
-                catch { }
+
+                await IndexNewDirectoryAsync(subDir);
             }
+            catch { }
         }
-        catch { }
     }
 
     private async Task HandleDeletedAsync(string path)
     {
+        // Atomic saves (write temp -> delete target -> rename) and fast delete/recreate cycles
+        // produce a Delete event for a path that exists again by the time we get here.
+        if (File.Exists(path) || Directory.Exists(path))
+        {
+            await HandleCreatedAsync(path);
+            return;
+        }
+
         await _database.DeleteByPathAsync(path);
     }
 
     private async Task HandleRenamedAsync(string oldPath, string newPath)
     {
-        await _database.UpdatePathAsync(oldPath, newPath);
+        var updated = await _database.UpdatePathAsync(oldPath, newPath);
+
+        // Nothing to rename means the old path was never indexed (created while the app was
+        // closed, or lost in a watcher buffer overflow) - index the new path from scratch.
+        if (updated == 0)
+            await HandleCreatedAsync(newPath);
     }
 
     private async Task HandleModifiedAsync(string path)
     {
-        try
+        if (!File.Exists(path))
         {
-            if (File.Exists(path))
-            {
-                var file = new FileInfo(path);
-
-                // Only update if file exists in database
-                if (await _database.ExistsAsync(path))
-                {
-                    await _database.UpdateFileAsync(new FileEntry
-                    {
-                        Name = file.Name,
-                        Path = file.FullName,
-                        Extension = file.Extension.TrimStart('.'),
-                        Size = file.Length,
-                        Modified = file.LastWriteTime,
-                        IsFolder = false
-                    });
-                }
-                else
-                {
-                    // File was created but we missed the create event - add it
-                    await HandleCreatedAsync(path);
-                }
-            }
+            // A directory changing its contents raises Modified on the directory itself
+            if (Directory.Exists(path)) await HandleCreatedAsync(path);
+            return;
         }
-        catch { }
+
+        var file = new FileInfo(path);
+
+        // Only update if file exists in database
+        if (await _database.ExistsAsync(path))
+        {
+            await _database.UpdateFileAsync(new FileEntry
+            {
+                Name = file.Name,
+                Path = file.FullName,
+                Extension = file.Extension.TrimStart('.'),
+                Size = file.Length,
+                Modified = file.LastWriteTime,
+                IsFolder = false
+            });
+        }
+        else
+        {
+            // File was created but we missed the create event - add it
+            await HandleCreatedAsync(path);
+        }
     }
 
     private bool ShouldIgnore(string path)
@@ -161,12 +174,13 @@ public partial class FileWatcherService
             }
         }
 
-        // Ignore temporary/system files
+        // Ignore temporary/system files.
+        // NOTE: names starting with "." are NOT ignored - that used to hide real content such as
+        // .github, .vscode, .env from the watcher even though the initial scan indexes them.
         var fileName = Path.GetFileName(path);
         if (string.IsNullOrEmpty(fileName)) return true;
 
         if (fileName.StartsWith("~$") ||
-            fileName.StartsWith(".") ||
             fileName.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) ||
             fileName.EndsWith(".temp", StringComparison.OrdinalIgnoreCase) ||
             fileName.Equals("Thumbs.db", StringComparison.OrdinalIgnoreCase) ||

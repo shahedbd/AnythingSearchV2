@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using AnythingSearch.Models;
 using AnythingSearch.Database;
 using Timer = System.Threading.Timer;
@@ -29,6 +29,7 @@ public partial class FileWatcherService : IDisposable
     private const int HighWaterMark = MaxPendingChanges / 2;
     private const int ProcessIntervalMs = 3000; // Process every 3 seconds
     private const int DebounceMs = 500; // Ignore duplicate changes within 500ms
+    private const int MaxChangeAgeMs = 10000; // Flush a queued path after 10s even if it keeps changing
 
     public event Action<string>? StatusChanged;
     public bool IsRunning => _isRunning;

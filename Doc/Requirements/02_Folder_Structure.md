@@ -35,13 +35,16 @@ AnythingSearchV2/
 │   │   ├── IndexingService.cs          ⚠️ Near-duplicate of BackgroundIndexingService — appears unused (see Doc 04)
 │   │   ├── SearchService.cs            ⚠️ Thin FileDatabase wrapper — appears unused, superseded by SearchManager (see Doc 04)
 │   │   ├── FileWatcherService.cs       FileSystemWatcher per drive + debounced batch sync into SQLite
+│   │   ├── BackgroundIndexingService.CatchUp.cs  Startup reconcile — re-reads only directories whose timestamp changed
 │   │   ├── SettingsManager.cs          Load/save AppSettings to settings.json
 │   │   ├── RecentSearchService.cs      Load/save last 10 searches to recent_searches.json
 │   │   ├── StartupService.cs           First-run tasks: open product/profile links, submit device telemetry
 │   │   └── DeviceInfoCollector.cs      Collects machine/OS/hardware info and posts it to a remote API (opt-in-by-install)
 │   │
 │   ├── Database/                       Data access
-│   │   ├── FileDatabase.cs             SQLite schema, bulk insert/consumer path, search queries, incremental CRUD
+│   │   ├── FileDatabase.cs             SQLite schema, bulk insert/consumer path, search queries
+│   │   ├── FileDatabase.Incremental.cs Single-entry writes (watcher/catch-up) + per-batch transactions
+│   │   ├── FileDatabase.Queries.cs     Folder-timestamp / child-name queries used by the catch-up pass
 │   │   └── CommonData.cs               Static constants: app name/version, URLs, API keys/endpoints
 │   │
 │   ├── Models/                         Plain data classes

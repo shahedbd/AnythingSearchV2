@@ -181,6 +181,15 @@ public partial class SearchManager : IDisposable
     }
 
     /// <summary>
+    /// Reconcile the existing index with the disk, picking up everything that changed while the
+    /// app was not running (the file watcher only sees changes while it is alive).
+    /// </summary>
+    public Task RunCatchUpAsync(CancellationToken cancellationToken = default)
+        // Thread-pool, not the caller's thread: SQLite's *Async methods run synchronously
+        // (see SearchManager.Query.cs), so this would otherwise block the UI at startup.
+        => Task.Run(() => _indexingService.RunCatchUpAsync(cancellationToken), cancellationToken);
+
+    /// <summary>
     /// Cancel ongoing indexing
     /// </summary>
     public void CancelIndexing()

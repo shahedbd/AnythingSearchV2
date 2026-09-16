@@ -1,4 +1,4 @@
-using AnythingSearch.Models;
+﻿using AnythingSearch.Models;
 
 namespace AnythingSearch.Services;
 
@@ -53,6 +53,15 @@ public partial class SearchManager
     {
         add => _indexingService.ProgressChanged += value;
         remove => _indexingService.ProgressChanged -= value;
+    }
+
+    /// <summary>
+    /// Subscribe to the startup catch-up pass that reconciles the index with the disk
+    /// </summary>
+    public event Action<string>? CatchUpStatusChanged
+    {
+        add => _indexingService.CatchUpStatusChanged += value;
+        remove => _indexingService.CatchUpStatusChanged -= value;
     }
 
     /// <summary>

@@ -106,9 +106,23 @@ Progress is streamed back to the UI via `SearchManager.ProgressChanged`/`Indexin
 
 Runs only once the SQLite database is ready and "Auto-Watch" is checked:
 - One `FileSystemWatcher` per fixed drive (`IncludeSubdirectories = true`, 64KB internal buffer).
-- Every raw OS event (`Created`/`Deleted`/`Renamed`/`Changed`) is deduplicated into a `ConcurrentDictionary<path, FileSystemChange>` (last-write-wins per path, with Delete > Rename > Create > Modify priority).
-- A `Timer` fires every 3 seconds and processes any change older than 500ms (debounce), applying deletes first, then creates, renames, modifications — each via a targeted `FileDatabase` call (`InsertSingleAsync` / `DeleteByPathAsync` / `UpdatePathAsync` / `UpdateFileAsync`), so the index stays live without a full rescan.
+- Every raw OS event (`Created`/`Deleted`/`Renamed`/`Changed`) is deduplicated into a `ConcurrentDictionary<path, FileSystemChange>`. The **newest event wins** — an older `Deleted` must never outrank a newer `Created`, because editors and git save files atomically (write temp → delete target → rename), which would otherwise drop live files from the index.
+- A `Timer` fires every 3 seconds and flushes each queued path once it has been quiet for 500ms **or** has been waiting for 10s (`MaxChangeAgeMs`). Without the age limit, a path that keeps changing (a log file, an in-progress download) refreshes its own debounce forever, fills the 10,000-entry queue, and every other change is dropped. When the queue does reach capacity it is flushed immediately instead of discarding the incoming change.
+- Handlers re-check the path on disk before writing (`FileWatcherService.SyncHandlers.cs`): a `Deleted` event for a path that exists again is treated as a create, and a rename whose old path was never indexed indexes the new path instead. OS events are a hint that something changed, never the authority on what the file system now contains.
+- Each change is applied via a targeted `FileDatabase` call (`InsertSingleAsync` / `DeleteByPathAsync` / `UpdatePathAsync` / `UpdateFileAsync`), batched into one transaction, so the index stays live without a full rescan.
 - A watcher that errors out is automatically restarted after a 5-second delay.
+
+### 5b. Catch-up pass (`BackgroundIndexingService.CatchUp.cs`)
+
+The watcher only sees changes while the app is running, so anything created or deleted while it was
+closed would stay invisible until a full rebuild. On startup, once the database is ready, `MainForm`
+kicks off `SearchManager.RunCatchUpAsync()` on a thread-pool thread:
+
+1. Load every indexed folder with the `LastWriteTime` it had when indexed (`GetFolderModifiedMapAsync`).
+2. Walk the same scan roots as the indexer. A directory's `LastWriteTime` changes whenever an entry is
+   added or removed inside it, so only directories whose timestamp no longer matches are re-read.
+3. For those, diff the directory's children against `GetChildNamesAsync` — insert what is new, delete
+   what is gone (never when enumeration failed), then refresh the folder's stored timestamp.
 
 ## 6. Result interaction (context menu / double-click)
 
