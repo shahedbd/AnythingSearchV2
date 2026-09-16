@@ -13,8 +13,9 @@ namespace AnythingSearch.Services;
 /// 3. Once SQLite is ready, switch to it for faster, more complete results
 /// 4. Falls back to Windows Search if SQLite fails
 ///
-/// Split into partial classes: this file owns initialization and the search/rebuild API;
-/// see SearchManager.Events.cs for the indexing/status event wiring.
+/// Split into partial classes: this file owns initialization and the rebuild/status API;
+/// see SearchManager.Query.cs for search execution and SearchManager.Events.cs for the
+/// indexing/status event wiring.
 /// </summary>
 public partial class SearchManager : IDisposable
 {
@@ -127,89 +128,6 @@ public partial class SearchManager : IDisposable
     }
 
     /// <summary>
-    /// Perform a search using the best available source.
-    /// Supports multi-term searches (space-separated words)
-    /// </summary>
-    public async Task<(List<FileEntry> Results, SearchSource Source)> SearchAsync(
-        string query,
-        int maxResults = 1000,
-        CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(query))
-            return (new List<FileEntry>(), CurrentSource);
-
-        // Use SQLite if ready, otherwise Windows Search
-        if (_useSqlite)
-        {
-            try
-            {
-                List<FileEntry> results;
-
-                // Use advanced search for multi-term queries
-                if (query.Contains(' '))
-                {
-                    results = await _database.SearchAdvancedAsync(query, maxResults);
-                }
-                else
-                {
-                    results = await _database.SearchAsync(query, maxResults);
-                }
-
-                _consecutiveSqliteFailures = 0;
-                return (results, SearchSource.SQLite);
-            }
-            catch (Exception ex)
-            {
-                _consecutiveSqliteFailures++;
-                StatusChanged?.Invoke($"SQLite search failed: {ex.Message}, falling back to Windows Search");
-
-                // If SQLite keeps failing (e.g. a corrupted database), stop retrying it on every
-                // keystroke and switch the active source until the index is rebuilt.
-                if (_consecutiveSqliteFailures >= MaxConsecutiveSqliteFailures)
-                {
-                    _useSqlite = false;
-                    SearchSourceChanged?.Invoke(CurrentSource);
-                    StatusChanged?.Invoke("SQLite search failed repeatedly - switched to Windows Search. Rebuild the index to restore the local database.");
-                }
-
-                // Fall back to Windows Search
-                if (_windowsSearchAvailable)
-                {
-                    var fallbackResults = await _windowsSearch.SearchAsync(query, maxResults, cancellationToken);
-                    return (fallbackResults, SearchSource.WindowsSearch);
-                }
-                return (new List<FileEntry>(), SearchSource.SQLite);
-            }
-        }
-        else if (_windowsSearchAvailable)
-        {
-            var results = await _windowsSearch.SearchAsync(query, maxResults, cancellationToken);
-            return (results, SearchSource.WindowsSearch);
-        }
-        else
-        {
-            // Neither available - try SQLite anyway (might have partial data)
-            try
-            {
-                List<FileEntry> results;
-                if (query.Contains(' '))
-                {
-                    results = await _database.SearchAdvancedAsync(query, maxResults);
-                }
-                else
-                {
-                    results = await _database.SearchAsync(query, maxResults);
-                }
-                return (results, SearchSource.SQLite);
-            }
-            catch
-            {
-                return (new List<FileEntry>(), SearchSource.None);
-            }
-        }
-    }
-
-    /// <summary>
     /// Perform content search (searches inside files).
     /// Only available with Windows Search.
     /// </summary>
@@ -224,7 +142,10 @@ public partial class SearchManager : IDisposable
             return new List<FileEntry>();
         }
 
-        return await _windowsSearch.SearchContentAsync(query, maxResults, cancellationToken);
+        // OLE DB has no real async I/O - keep it off the UI thread
+        return await Task.Run(
+            () => _windowsSearch.SearchContentAsync(query, maxResults, cancellationToken),
+            cancellationToken);
     }
 
     /// <summary>
@@ -234,7 +155,8 @@ public partial class SearchManager : IDisposable
     {
         if (_useSqlite)
         {
-            return await _database.GetCountAsync();
+            // COUNT(*) over a large index is slow - never run it on the UI thread
+            return await Task.Run(() => _database.GetCountAsync());
         }
         else
         {
@@ -300,5 +222,6 @@ public partial class SearchManager : IDisposable
         _windowsSearch.StatusChanged -= OnWindowsSearchStatus;
 
         _indexingService.Dispose();
+        _searchGate.Dispose();
     }
 }

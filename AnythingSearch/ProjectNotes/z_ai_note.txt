@@ -9,6 +9,47 @@ C:\Users\Public\src\MS_Store_App\NetSpeedMeterPlus\Doc\Requirements
 - Preserve existing behavior unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
+
+Everythings: 3 272 754
+Anything: 3 029 536
+
+
+
+
+Review: 
+/Forms/MainForm.Search.cs/TxtSearch_TextChanged method and 
+/Services/Search
+
+
+Search input got hang at some point. Lets say, i can frequently type: shahed and if i break typing for some moments then again i cant type.
+Search input got hang for a moments. After few moments then i can type.
+
+This is not user friendly. User shoud type without any interrruption. Task shoud process parallel in background.
+
+
+Find out roor cause first. and fix accordingly.
+
+
+Project referece doc:
+G:\src\MS_Store_App\AnythingSearchV2\Doc\Requirements
+
+
+- Keep files small: Target ≤300 lines; 400 lines absolute maximum. Split large files into focused modules.
+- Skip build, test, publish, deployment, migration, and package commands unless explicitly requested; I will handle them.
+- Optimize token usage: inspect only relevant files and make the smallest necessary changes.
+- Follow the existing architecture, documentation, patterns, naming conventions, and coding style.
+- Reuse existing code and dependencies; avoid unnecessary refactoring or new dependencies.
+- Preserve existing behavior unless the task requires otherwise.
+- Keep responses concise and report only important changes, affected files, and caveats.
+
+
+
+
+Add sub folder for more clear view and grouping.
+/Services
+
+
+
 Now review: /Services
 
 And make sure:
@@ -32,13 +73,7 @@ Implement it: one by one
 9, 10	Watcher batching / SQLite failure circuit-breaker	medium	Medium (robustness at scale)
 15	Add a minimal test project for FileDatabase/DatabaseStatus	medium	Medium (long-term safety net)
 
-- Keep files small: Target ≤300 lines; 400 lines absolute maximum. Split large files into focused modules.
-- Skip build, test, publish, deployment, migration, and package commands unless explicitly requested; I will handle them.
-- Optimize token usage: inspect only relevant files and make the smallest necessary changes.
-- Follow the existing architecture, documentation, patterns, naming conventions, and coding style.
-- Reuse existing code and dependencies; avoid unnecessary refactoring or new dependencies.
-- Preserve existing behavior unless the task requires otherwise.
-- Keep responses concise and report only important changes, affected files, and caveats.
+
 
 
 

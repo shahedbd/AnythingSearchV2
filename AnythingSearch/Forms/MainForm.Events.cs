@@ -1,4 +1,5 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
+using AnythingSearch.Models;
 
 namespace AnythingSearch.Forms;
 
@@ -147,6 +148,28 @@ public partial class MainForm
 
         _iconCache[ext] = _fileIcon;
         return _fileIcon;
+    }
+
+    /// <summary>
+    /// Resolve the file-type icons for a result set on a thread-pool thread.
+    /// Icon.ExtractAssociatedIcon does disk I/O, so doing it while filling the grid
+    /// stalled the UI thread (and therefore typing) on the first hit of each extension.
+    /// </summary>
+    private Task PrewarmIconCacheAsync(List<FileEntry> items, CancellationToken cancellationToken)
+    {
+        return Task.Run(() =>
+        {
+            foreach (var item in items)
+            {
+                if (cancellationToken.IsCancellationRequested) return;
+                if (item.IsFolder) continue;
+
+                var ext = Path.GetExtension(item.Path).ToLowerInvariant();
+                if (string.IsNullOrEmpty(ext) || _iconCache.ContainsKey(ext)) continue;
+
+                GetCachedIcon(item.Path, item.IsFolder);
+            }
+        }, cancellationToken);
     }
 
     private Image GetStockIcon(StockIconId id)

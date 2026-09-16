@@ -74,16 +74,22 @@ User types in txtSearch
       ├─ cancel any in-flight search (CancellationTokenSource)
       ├─ await Task.Delay(400ms, token)   ← debounce: only the last keystroke within 400ms actually searches
       └─ PerformSearchAsync(searchText, token)
-            ├─ (results, source) = await SearchManager.SearchAsync(searchText, maxResults: 1000, token)
+            ├─ (results, source) = await SearchManager.SearchAsync(searchText, maxResults: 1000, token)   ← always executed on a thread-pool thread
             │     ├─ if SQLite ready:
             │     │     multi-word query (contains a space) → FileDatabase.SearchAdvancedAsync (AND over LIKE per term)
             │     │     single word            → FileDatabase.SearchAsync (relevance-ranked LIKE: exact > starts-with > contains > path-contains)
             │     │     on exception → falls back to WindowsSearchService.SearchAsync if available
             │     └─ else → WindowsSearchService.SearchAsync (OLE DB query against SystemIndex), or SQLite as last resort
-            ├─ populate dgvResults (icons resolved/cached per extension via Shell/Icon APIs)
+            ├─ pre-warm the per-extension icon cache off the UI thread (Icon.ExtractAssociatedIcon does disk I/O)
+            ├─ populate dgvResults in a single Rows.AddRange
             └─ save to RecentSearchService if query ≥3 chars and looks like a "new" search (debounced/coalesced so
                typing "rep" → "report" doesn't create two separate recent-search entries)
 ```
+
+> **Threading rule**: neither Microsoft.Data.Sqlite nor the Windows Search OLE DB provider implement real async I/O — their
+> `*Async` methods run synchronously on the calling thread. `SearchManager.Query.cs` therefore pushes every query onto a
+> thread-pool thread (serialized by a semaphore because the SQLite connection is shared) so the message pump — and typing —
+> is never blocked.
 
 Pressing **Enter** force-saves the current query to recent searches; **Escape** minimizes to tray; **↓** moves focus into the results grid.
 

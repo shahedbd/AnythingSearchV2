@@ -14,7 +14,8 @@ AnythingSearchV2/
 │   │   ├── MainForm.cs                 Fields, constructor, InitializeAsync, dispose — the "core" partial
 │   │   ├── MainForm.Layout.cs          Programmatic UI construction (no .Designer for the real layout — see note below)
 │   │   ├── MainForm.Events.cs          Form-level events, DataGridView events, icon extraction (P/Invoke stock icons)
-│   │   ├── MainForm.Search.cs          Search textbox handling, debounce, recent-searches panel rendering
+│   │   ├── MainForm.Search.cs          Search textbox handling, debounce, results-grid population
+│   │   ├── MainForm.RecentSearches.cs  Recent-searches panel rendering
 │   │   ├── MainForm.Indexing.cs        Build/Rebuild Index button, indexing progress/completion handlers, file-watcher start/stop
 │   │   ├── MainForm.SystemTray.cs      NotifyIcon, tray context menu, minimize/restore
 │   │   ├── MainForm.ContextMenu.cs     Right-click grid menu: Open, Open Location, Copy, Properties, Delete
@@ -28,6 +29,7 @@ AnythingSearchV2/
 │   │
 │   ├── Services/                       Application/business logic (no UI dependencies)
 │   │   ├── SearchManager.cs            Orchestrates WindowsSearchService vs SQLite; the class MainForm actually talks to
+│   │   ├── SearchManager.Query.cs      Query execution — runs every query on a thread-pool thread so the UI never blocks
 │   │   ├── WindowsSearchService.cs     Queries the OS's own Windows Search Index via OLE DB
 │   │   ├── Backgroundindexingservice.cs  Full-disk parallel scanner that builds the SQLite index (the one actually used)
 │   │   ├── IndexingService.cs          ⚠️ Near-duplicate of BackgroundIndexingService — appears unused (see Doc 04)

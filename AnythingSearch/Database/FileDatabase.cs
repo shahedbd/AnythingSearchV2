@@ -302,7 +302,7 @@ public class FileDatabase : IDisposable
     /// <summary>
     /// Fast search with JOIN - improved relevance sorting like Everything
     /// </summary>
-    public async Task<List<FileEntry>> SearchAsync(string query, int limit = 1000)
+    public async Task<List<FileEntry>> SearchAsync(string query, int limit = 1000, CancellationToken cancellationToken = default)
     {
         var results = new List<FileEntry>();
 
@@ -346,9 +346,12 @@ public class FileDatabase : IDisposable
         cmd.Parameters.AddWithValue("@contains", $"%{escapedQuery}%");
         cmd.Parameters.AddWithValue("@limit", limit);
 
-        using var reader = await cmd.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
+        using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
         {
+            // A superseded search (user kept typing) must stop reading rows immediately
+            cancellationToken.ThrowIfCancellationRequested();
+
             results.Add(new FileEntry
             {
                 Name = reader.GetString(0),
@@ -367,7 +370,7 @@ public class FileDatabase : IDisposable
     /// Advanced search with multiple terms (space-separated)
     /// Each term must match somewhere in name or path
     /// </summary>
-    public async Task<List<FileEntry>> SearchAdvancedAsync(string query, int limit = 1000)
+    public async Task<List<FileEntry>> SearchAdvancedAsync(string query, int limit = 1000, CancellationToken cancellationToken = default)
     {
         var results = new List<FileEntry>();
         
@@ -412,9 +415,12 @@ public class FileDatabase : IDisposable
         }
         cmd.Parameters.AddWithValue("@limit", limit);
 
-        using var reader = await cmd.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
+        using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
         {
+            // A superseded search (user kept typing) must stop reading rows immediately
+            cancellationToken.ThrowIfCancellationRequested();
+
             results.Add(new FileEntry
             {
                 Name = reader.GetString(0),
