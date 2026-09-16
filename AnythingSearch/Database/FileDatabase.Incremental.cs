@@ -1,4 +1,4 @@
-﻿using AnythingSearch.Models;
+using AnythingSearch.Models;
 using Microsoft.Data.Sqlite;
 
 namespace AnythingSearch.Database;
@@ -22,7 +22,9 @@ public partial class FileDatabase
         // Ensure folder exists
         var folderId = await GetOrCreateFolderIdAsync(folderPath);
 
-        var sql = "INSERT INTO Files (Name, FolderId, Ext, Size, Modified, IsFolder) VALUES (@n, @f, @e, @s, @m, @i)";
+        // OR IGNORE: the UNIQUE index on (FolderId, Name) rejects a row that is already indexed
+        // rather than letting a repeated watcher event add a second copy of it.
+        var sql = "INSERT OR IGNORE INTO Files (Name, FolderId, Ext, Size, Modified, IsFolder) VALUES (@n, @f, @e, @s, @m, @i)";
         using var cmd = new SqliteCommand(sql, _connection);
         cmd.Parameters.AddWithValue("@n", entry.Name);
         cmd.Parameters.AddWithValue("@f", folderId);
@@ -115,8 +117,11 @@ public partial class FileDatabase
         // Get or create new folder
         var newFolderId = await GetOrCreateFolderIdAsync(newFolderPath);
 
+        // OR REPLACE: if the destination name is already indexed the stored row is stale (the
+        // rename just overwrote it on disk), so replacing it is correct - and it keeps the rename
+        // from failing against the UNIQUE (FolderId, Name) index.
         var sql = @"
-            UPDATE Files 
+            UPDATE OR REPLACE Files
             SET Name = @newName, FolderId = @newFolderId
             WHERE Name = @oldName 
             AND FolderId IN (SELECT Id FROM Folders WHERE Path = @oldFolder COLLATE NOCASE)

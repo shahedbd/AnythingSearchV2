@@ -1,4 +1,4 @@
-﻿using AnythingSearch.Models;
+using AnythingSearch.Models;
 
 namespace AnythingSearch.Services;
 
@@ -16,6 +16,9 @@ public partial class SearchManager
         _consecutiveSqliteFailures = 0;
         SearchSourceChanged?.Invoke(SearchSource.SQLite);
         StatusChanged?.Invoke($"Local database ready - {_indexingService.Status.TotalItems:N0} items indexed");
+
+        // There is something to load now, so pull the index into RAM for instant searching.
+        _memorySearch.RequestRebuild("database ready");
     }
 
     private void OnIndexingProgress(IndexProgress progress)

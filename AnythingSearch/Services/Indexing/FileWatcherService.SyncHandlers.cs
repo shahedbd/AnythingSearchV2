@@ -21,7 +21,7 @@ public partial class FileWatcherService
 
             if (!await _database.ExistsAsync(path))
             {
-                await _database.InsertSingleAsync(new FileEntry
+                var entry = new FileEntry
                 {
                     Name = dir.Name,
                     Path = dir.FullName,
@@ -29,7 +29,9 @@ public partial class FileWatcherService
                     Size = 0,
                     Modified = dir.LastWriteTime,
                     IsFolder = true
-                });
+                };
+                await _database.InsertSingleAsync(entry);
+                _memoryIndex?.NotifyAdded(entry);
             }
 
             // Also index files inside the new directory
@@ -42,7 +44,7 @@ public partial class FileWatcherService
 
             if (await _database.ExistsAsync(path)) return;
 
-            await _database.InsertSingleAsync(new FileEntry
+            var entry = new FileEntry
             {
                 Name = file.Name,
                 Path = file.FullName,
@@ -50,7 +52,9 @@ public partial class FileWatcherService
                 Size = file.Length,
                 Modified = file.LastWriteTime,
                 IsFolder = false
-            });
+            };
+            await _database.InsertSingleAsync(entry);
+            _memoryIndex?.NotifyAdded(entry);
         }
     }
 
@@ -67,7 +71,7 @@ public partial class FileWatcherService
                 if (ShouldIgnore(file.FullName)) continue;
                 if (await _database.ExistsAsync(file.FullName)) continue;
 
-                await _database.InsertSingleAsync(new FileEntry
+                var entry = new FileEntry
                 {
                     Name = file.Name,
                     Path = file.FullName,
@@ -75,7 +79,9 @@ public partial class FileWatcherService
                     Size = file.Length,
                     Modified = file.LastWriteTime,
                     IsFolder = false
-                });
+                };
+                await _database.InsertSingleAsync(entry);
+                _memoryIndex?.NotifyAdded(entry);
             }
             catch { }
         }
@@ -89,7 +95,7 @@ public partial class FileWatcherService
 
                 if (!await _database.ExistsAsync(subDir.FullName))
                 {
-                    await _database.InsertSingleAsync(new FileEntry
+                    var entry = new FileEntry
                     {
                         Name = subDir.Name,
                         Path = subDir.FullName,
@@ -97,7 +103,9 @@ public partial class FileWatcherService
                         Size = 0,
                         Modified = subDir.LastWriteTime,
                         IsFolder = true
-                    });
+                    };
+                    await _database.InsertSingleAsync(entry);
+                    _memoryIndex?.NotifyAdded(entry);
                 }
 
                 await IndexNewDirectoryAsync(subDir);
@@ -117,6 +125,7 @@ public partial class FileWatcherService
         }
 
         await _database.DeleteByPathAsync(path);
+        _memoryIndex?.NotifyRemoved(path);
     }
 
     private async Task HandleRenamedAsync(string oldPath, string newPath)
@@ -126,7 +135,38 @@ public partial class FileWatcherService
         // Nothing to rename means the old path was never indexed (created while the app was
         // closed, or lost in a watcher buffer overflow) - index the new path from scratch.
         if (updated == 0)
+        {
             await HandleCreatedAsync(newPath);
+            return;
+        }
+
+        _memoryIndex?.NotifyRemoved(oldPath);
+        if (File.Exists(newPath))
+        {
+            var file = new FileInfo(newPath);
+            _memoryIndex?.NotifyAdded(new FileEntry
+            {
+                Name = file.Name,
+                Path = file.FullName,
+                Extension = file.Extension.TrimStart('.'),
+                Size = file.Length,
+                Modified = file.LastWriteTime,
+                IsFolder = false
+            });
+        }
+        else if (Directory.Exists(newPath))
+        {
+            var dir = new DirectoryInfo(newPath);
+            _memoryIndex?.NotifyAdded(new FileEntry
+            {
+                Name = dir.Name,
+                Path = dir.FullName,
+                Extension = "",
+                Size = 0,
+                Modified = dir.LastWriteTime,
+                IsFolder = true
+            });
+        }
     }
 
     private async Task HandleModifiedAsync(string path)
@@ -143,7 +183,7 @@ public partial class FileWatcherService
         // Only update if file exists in database
         if (await _database.ExistsAsync(path))
         {
-            await _database.UpdateFileAsync(new FileEntry
+            var entry = new FileEntry
             {
                 Name = file.Name,
                 Path = file.FullName,
@@ -151,7 +191,9 @@ public partial class FileWatcherService
                 Size = file.Length,
                 Modified = file.LastWriteTime,
                 IsFolder = false
-            });
+            };
+            await _database.UpdateFileAsync(entry);
+            _memoryIndex?.NotifyUpdated(entry);
         }
         else
         {

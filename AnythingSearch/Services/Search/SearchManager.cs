@@ -1,5 +1,6 @@
-﻿using AnythingSearch.Models;
+using AnythingSearch.Models;
 using AnythingSearch.Database;
+using AnythingSearch.Services.Search.Memory;
 
 namespace AnythingSearch.Services;
 
@@ -22,6 +23,7 @@ public partial class SearchManager : IDisposable
     private readonly WindowsSearchService _windowsSearch;
     private readonly BackgroundIndexingService _indexingService;
     private readonly FileDatabase _database;
+    private readonly MemorySearchService _memorySearch;
 
     private bool _useSqlite = false;
     private bool _windowsSearchAvailable = false;
@@ -44,7 +46,15 @@ public partial class SearchManager : IDisposable
     /// <summary>
     /// Current search source being used
     /// </summary>
-    public SearchSource CurrentSource => _useSqlite ? SearchSource.SQLite : SearchSource.WindowsSearch;
+    public SearchSource CurrentSource => _memorySearch.IsReady
+        ? SearchSource.Memory
+        : _useSqlite ? SearchSource.SQLite : SearchSource.WindowsSearch;
+
+    /// <summary>
+    /// The in-memory index that answers searches once it has loaded. Exposed so the file watcher
+    /// can keep it in step with the database it writes to.
+    /// </summary>
+    public MemorySearchService MemoryIndex => _memorySearch;
 
     /// <summary>
     /// Whether the SQLite database is ready
@@ -73,6 +83,10 @@ public partial class SearchManager : IDisposable
         _database = database;
         _windowsSearch = new WindowsSearchService();
         _indexingService = new BackgroundIndexingService(database, settingsManager);
+        _memorySearch = new MemorySearchService(database.DatabasePath);
+        _database.MaintenanceStatusChanged += status => StatusChanged?.Invoke(status);
+        _memorySearch.StatusChanged += status => StatusChanged?.Invoke(status);
+        _memorySearch.SnapshotReady += () => SearchSourceChanged?.Invoke(SearchSource.Memory);
 
         // Subscribe to indexing events
         _indexingService.DatabaseReady += OnDatabaseReady;
@@ -111,6 +125,15 @@ public partial class SearchManager : IDisposable
             SearchSourceChanged?.Invoke(SearchSource.SQLite);
             StatusChanged?.Invoke($"Using local database ({_indexingService.Status.TotalItems:N0} items)");
             System.Diagnostics.Debug.WriteLine($"[SearchManager] Database is ready, using SQLite");
+
+            // Load the index into RAM in the background. Searches keep using SQLite until the
+            // snapshot lands, then switch over automatically.
+            _memorySearch.Start();
+
+            // Databases written before (FolderId, Name) became unique can hold the same entry
+            // many times over, which both bloats the index and shows the user duplicate rows.
+            // Clean that up once, off the UI thread, then reload the snapshot without them.
+            _ = Task.Run(() => RunStartupMaintenanceAsync());
         }
         else if (_indexingService.IsIndexing)
         {
@@ -124,6 +147,33 @@ public partial class SearchManager : IDisposable
                 StatusChanged?.Invoke("Building local database...");
             }
             System.Diagnostics.Debug.WriteLine($"[SearchManager] Indexing in progress, using Windows Search");
+        }
+    }
+
+    /// <summary>
+    /// One-off database upkeep, run in the background so it never delays startup or a search:
+    /// remove duplicate entries left by earlier versions, then return the space they occupied.
+    ///
+    /// It waits for the first in-memory snapshot to settle first. Both jobs read the same file,
+    /// and VACUUM needs it to itself - running them at the same time just means the compaction
+    /// loses the race and silently does nothing.
+    /// </summary>
+    private async Task RunStartupMaintenanceAsync()
+    {
+        try
+        {
+            await _memorySearch.FirstSnapshotSettled;
+
+            var removed = await _database.EnsureUniqueEntriesAsync();
+            if (removed > 0)
+                _memorySearch.RequestRebuild($"{removed:N0} duplicate entries removed");
+
+            await _database.CompactIfFragmentedAsync();
+        }
+        catch (Exception ex)
+        {
+            // Upkeep is best-effort: a failure here must never stop the app from searching.
+            System.Diagnostics.Debug.WriteLine($"[SearchManager] Startup maintenance skipped: {ex.Message}");
         }
     }
 
@@ -153,6 +203,9 @@ public partial class SearchManager : IDisposable
     /// </summary>
     public async Task<long> GetTotalCountAsync()
     {
+        if (_memorySearch.IsReady)
+            return _memorySearch.Count;
+
         if (_useSqlite)
         {
             // COUNT(*) over a large index is slow - never run it on the UI thread
@@ -177,7 +230,9 @@ public partial class SearchManager : IDisposable
             StatusChanged?.Invoke("Rebuilding index - using Windows Search temporarily");
         }
 
+        _memorySearch.Invalidate();
         await _indexingService.RebuildIndexAsync(cancellationToken);
+        _memorySearch.RequestRebuild("index rebuilt");
     }
 
     /// <summary>
@@ -206,6 +261,10 @@ public partial class SearchManager : IDisposable
         {
             return _indexingService.Status.GetStatusMessage();
         }
+        else if (_memorySearch.IsReady)
+        {
+            return $"Instant search ({_memorySearch.Count:N0} items in memory)";
+        }
         else if (_useSqlite)
         {
             return $"Using local database ({_indexingService.Status.TotalItems:N0} items)";
@@ -231,6 +290,7 @@ public partial class SearchManager : IDisposable
         _windowsSearch.StatusChanged -= OnWindowsSearchStatus;
 
         _indexingService.Dispose();
+        _memorySearch.Dispose();
         _searchGate.Dispose();
     }
 }

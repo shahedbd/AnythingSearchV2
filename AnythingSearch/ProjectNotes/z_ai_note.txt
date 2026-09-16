@@ -10,6 +10,15 @@ C:\Users\Public\src\MS_Store_App\NetSpeedMeterPlus\Doc\Requirements
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
 
+I just comare search performance AnythingSearch vs Everything.
+I type in search input: shahed
+I got instant result in Everything app
+But in AnythingSearch app, i got result after 1-3 seconds (around)
+
+
+Firt: can you compare two app search performance by time with input: shahed. Note: You full access to Everything app. App is running and showing in my desktop. 
+Second: Now refactor and improve AnythingSearch app search performance to make it best app than Everything app.
+
 
 
 

@@ -15,7 +15,16 @@ namespace AnythingSearch.Forms;
 public partial class MainForm
 {
     private const string SearchPlaceholder = "Search files and folders...";
-    private const int SearchDebounceMs = 400;
+
+    // The in-memory index answers in single-digit milliseconds, so the debounce no longer has to
+    // hide a slow query - it only has to stop a fast typist from queueing work. 400 ms used to be
+    // pure added latency on every search; 90 ms is below the threshold where typing feels laggy.
+    private const int SearchDebounceMs = 90;
+
+    // While the in-memory snapshot is still loading, searches go to SQLite, which is slow enough
+    // that a longer debounce is still worth it.
+    private const int FallbackSearchDebounceMs = 350;
+
     private const int MaxDisplayedResults = 1000;
 
     // Track the last saved search to avoid duplicates
@@ -63,7 +72,10 @@ public partial class MainForm
         try
         {
             // Debounce: only the last keystroke within the window actually searches
-            await Task.Delay(SearchDebounceMs, currentToken);
+            var debounce = _searchManager.CurrentSource == SearchSource.Memory
+                ? SearchDebounceMs
+                : FallbackSearchDebounceMs;
+            await Task.Delay(debounce, currentToken);
 
             await PerformSearchAsync(searchText, currentToken);
         }
@@ -96,7 +108,7 @@ public partial class MainForm
 
         // Use SearchManager which automatically selects the best search source.
         // The query runs on a thread-pool thread, so the UI stays responsive while it executes.
-        var (results, source) = await _searchManager.SearchAsync(searchText, MaxDisplayedResults, cancellationToken);
+        var (results, totalMatches, source) = await _searchManager.SearchAsync(searchText, MaxDisplayedResults, cancellationToken);
 
         if (cancellationToken.IsCancellationRequested) return;
 
@@ -115,19 +127,24 @@ public partial class MainForm
 
         sw.Stop();
 
-        SaveToRecentSearches(searchText, results.Count);
+        SaveToRecentSearches(searchText, Math.Max(totalMatches, results.Count));
 
         // Show search source in results
         var sourceText = source switch
         {
+            SearchSource.Memory => "Instant",
             SearchSource.SQLite => "Local DB",
             SearchSource.WindowsSearch => "Windows Search",
             _ => "Search"
         };
 
-        lblSearchInfo.Text = results.Count > MaxDisplayedResults
-            ? $"Found {results.Count:N0} results (showing {MaxDisplayedResults:N0})  •  {sw.ElapsedMilliseconds}ms  •  {sourceText}"
-            : $"Found {results.Count:N0} results  •  {sw.ElapsedMilliseconds}ms  •  {sourceText}";
+        // The memory index reports how many entries actually matched, which is normally far more
+        // than the page of results it returned.
+        var total = Math.Max(totalMatches, results.Count);
+
+        lblSearchInfo.Text = total > displayResults.Count
+            ? $"Found {total:N0} results (showing {displayResults.Count:N0})  •  {sw.ElapsedMilliseconds}ms  •  {sourceText}"
+            : $"Found {total:N0} results  •  {sw.ElapsedMilliseconds}ms  •  {sourceText}";
     }
 
     /// <summary>

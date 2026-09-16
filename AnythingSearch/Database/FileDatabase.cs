@@ -1,4 +1,4 @@
-﻿using AnythingSearch.Models;
+using AnythingSearch.Models;
 using Microsoft.Data.Sqlite;
 using System.Collections.Concurrent;
 
@@ -87,6 +87,12 @@ public partial class FileDatabase : IDisposable
         _dbPath = Path.Combine(appData, "AnythingSearch.db");
     }
 
+    /// <summary>
+    /// Location of the database file. The in-memory search index opens its own read-only
+    /// connection to this path so building a snapshot never blocks the writer.
+    /// </summary>
+    public string DatabasePath => _dbPath;
+
     public async Task InitializeAsync()
     {
         _connection = new SqliteConnection($"Data Source={_dbPath};Pooling=True;Cache=Shared");
@@ -114,15 +120,40 @@ public partial class FileDatabase : IDisposable
         using var cmd = new SqliteCommand(createTables, _connection);
         await cmd.ExecuteNonQueryAsync();
 
-        // MAXIMUM performance settings for bulk insert
         await ExecuteNonQueryAsync("PRAGMA journal_mode = WAL");
+        await ExecuteNonQueryAsync("PRAGMA temp_store = MEMORY");
+        await ExecuteNonQueryAsync("PRAGMA page_size = 4096");
+        await ExecuteNonQueryAsync("PRAGMA auto_vacuum = NONE");
+        await ApplyRuntimeSettingsAsync();
+    }
+
+    /// <summary>
+    /// Settings for ordinary running, as opposed to a bulk index build.
+    ///
+    /// These used to be the bulk-build settings, left in place for the entire session: a 256 MB
+    /// page cache and a 512 MB mapping, held for the life of the process. That made sense when
+    /// every keystroke queried SQLite, but searches are now answered from the in-memory index, so
+    /// the page cache was several hundred megabytes doing nothing. synchronous is NORMAL here
+    /// rather than OFF because incremental writes from the file watcher have to survive a crash;
+    /// only the bulk build, which can simply be redone, turns it off.
+    /// </summary>
+    private async Task ApplyRuntimeSettingsAsync()
+    {
+        await ExecuteNonQueryAsync("PRAGMA synchronous = NORMAL");
+        await ExecuteNonQueryAsync("PRAGMA cache_size = -16000");   // 16 MB
+        await ExecuteNonQueryAsync("PRAGMA mmap_size = 67108864");  // 64 MB
+        await ExecuteNonQueryAsync("PRAGMA locking_mode = NORMAL");
+        // Wait briefly instead of failing outright when the in-memory index is reading the file.
+        await ExecuteNonQueryAsync("PRAGMA busy_timeout = 5000");
+    }
+
+    /// <summary>Throughput settings for the bulk build, which owns the database while it runs.</summary>
+    private async Task ApplyBulkBuildSettingsAsync()
+    {
         await ExecuteNonQueryAsync("PRAGMA synchronous = OFF");
         await ExecuteNonQueryAsync("PRAGMA cache_size = -256000");
-        await ExecuteNonQueryAsync("PRAGMA temp_store = MEMORY");
         await ExecuteNonQueryAsync("PRAGMA mmap_size = 536870912");
-        await ExecuteNonQueryAsync("PRAGMA page_size = 4096");
         await ExecuteNonQueryAsync("PRAGMA locking_mode = EXCLUSIVE");
-        await ExecuteNonQueryAsync("PRAGMA auto_vacuum = NONE");
     }
 
     public async Task ClearAsync()
@@ -159,6 +190,12 @@ public partial class FileDatabase : IDisposable
 
     public async Task BeginBatchAsync()
     {
+        // Only the bulk build takes the file exclusively, and only it gets the big page cache.
+        // Holding either for the whole session (which is what InitializeAsync used to do) locked
+        // out every other connection - including the read-only one the in-memory index is built
+        // from - and kept hundreds of megabytes of cache reserved for a database that is no
+        // longer on the search path.
+        await ApplyBulkBuildSettingsAsync();
         await ExecuteNonQueryAsync("BEGIN TRANSACTION");
         _inTransaction = true;
 
@@ -170,8 +207,10 @@ public partial class FileDatabase : IDisposable
         _insertFolderCommand.Parameters.Add("@path", SqliteType.Text);
         _insertFolderCommand.Prepare();
 
+        // OR IGNORE, paired with the UNIQUE index on (FolderId, Name), is what keeps the same
+        // entry from being stored twice when two scan roots happen to cover the same directory.
         _insertFileCommand = new SqliteCommand(
-            "INSERT INTO Files (Name, FolderId, Ext, Size, Modified, IsFolder) VALUES (@n, @f, @e, @s, @m, @i)",
+            "INSERT OR IGNORE INTO Files (Name, FolderId, Ext, Size, Modified, IsFolder) VALUES (@n, @f, @e, @s, @m, @i)",
             _connection);
         _insertFileCommand.Parameters.Add("@n", SqliteType.Text);
         _insertFileCommand.Parameters.Add("@f", SqliteType.Integer);
@@ -205,16 +244,18 @@ public partial class FileDatabase : IDisposable
     {
         // Create indexes (much faster after all data is inserted)
         await ExecuteNonQueryAsync("CREATE INDEX IF NOT EXISTS idx_files_name ON Files(Name)");
-        await ExecuteNonQueryAsync("CREATE INDEX IF NOT EXISTS idx_files_folder ON Files(FolderId)");
+        // Also the uniqueness guarantee: one entry per name per folder, which is what the file
+        // system itself guarantees. Covers FolderId lookups too, so no separate index is needed.
+        await ExecuteNonQueryAsync(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_files_folder_name_unique ON Files(FolderId, Name)");
         await ExecuteNonQueryAsync("CREATE INDEX IF NOT EXISTS idx_files_ext ON Files(Ext)");
         await ExecuteNonQueryAsync("CREATE INDEX IF NOT EXISTS idx_folders_path ON Folders(Path)");
 
         // Checkpoint WAL to merge into main database file
         await ExecuteNonQueryAsync("PRAGMA wal_checkpoint(TRUNCATE)");
 
-        // Switch to normal mode
-        await ExecuteNonQueryAsync("PRAGMA synchronous = NORMAL");
-        await ExecuteNonQueryAsync("PRAGMA locking_mode = NORMAL");
+        // Back to the modest settings the app runs with the rest of the time
+        await ApplyRuntimeSettingsAsync();
 
         // Optimize
         await ExecuteNonQueryAsync("ANALYZE");
@@ -337,24 +378,39 @@ public partial class FileDatabase : IDisposable
         // 3. Name contains query
         // 4. Path contains query (for finding files in matching folders)
         // Order by: folders first, then by relevance, then alphabetically
+        // Written as two scans joined by UNION ALL rather than one OR across a join. The OR form
+        // made SQLite drive the query from the Folders table ("SCAN fo" plus an index probe into
+        // Files for every folder), so it walked the whole dataset and then sorted every match in a
+        // temp B-tree. Here Files is scanned once for name matches, folders are matched
+        // separately, and Folders is only joined for the rows that survived.
+        //
+        // This is the fallback path: it runs while the in-memory index is still loading, and if
+        // that index is unavailable. MemorySearchService answers searches once it is ready.
         var sql = @"
-            SELECT f.Name, fo.Path || '\' || f.Name AS FullPath, f.Ext, f.Size, f.Modified, f.IsFolder,
-                CASE 
-                    WHEN f.Name = @exact THEN 1
-                    WHEN f.Name LIKE @startsWith ESCAPE '\' THEN 2
-                    WHEN f.Name LIKE @contains ESCAPE '\' THEN 3
-                    WHEN fo.Path LIKE @contains ESCAPE '\' THEN 4
-                    ELSE 5
-                END AS Relevance
-            FROM Files f
-            INNER JOIN Folders fo ON f.FolderId = fo.Id
-            WHERE f.Name LIKE @contains ESCAPE '\' 
-               OR fo.Path LIKE @contains ESCAPE '\'
-            ORDER BY 
-                f.IsFolder DESC,
-                Relevance ASC,
-                LENGTH(f.Name) ASC,
-                f.Name ASC
+            SELECT m.Name, fo.Path || '\' || m.Name AS FullPath, m.Ext, m.Size, m.Modified, m.IsFolder
+            FROM (
+                SELECT Name, FolderId, Ext, Size, Modified, IsFolder,
+                    CASE
+                        WHEN Name = @exact THEN 1
+                        WHEN Name LIKE @startsWith ESCAPE '\' THEN 2
+                        ELSE 3
+                    END AS Relevance
+                FROM Files
+                WHERE Name LIKE @contains ESCAPE '\'
+
+                UNION ALL
+
+                SELECT Name, FolderId, Ext, Size, Modified, IsFolder, 4 AS Relevance
+                FROM Files
+                WHERE FolderId IN (SELECT Id FROM Folders WHERE Path LIKE @contains ESCAPE '\')
+                  AND Name NOT LIKE @contains ESCAPE '\'
+            ) m
+            INNER JOIN Folders fo ON m.FolderId = fo.Id
+            ORDER BY
+                m.IsFolder DESC,
+                m.Relevance ASC,
+                LENGTH(m.Name) ASC,
+                m.Name ASC
             LIMIT @limit
         ";
 

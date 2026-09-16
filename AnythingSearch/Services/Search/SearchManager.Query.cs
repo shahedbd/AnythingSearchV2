@@ -5,27 +5,62 @@ namespace AnythingSearch.Services;
 /// <summary>
 /// Query execution for <see cref="SearchManager"/>.
 ///
+/// Source preference, fastest first:
+/// 1. The in-memory index (<see cref="Search.Memory.MemorySearchService"/>) - a vectorised scan of
+///    the packed name blob, typically a few milliseconds regardless of index size.
+/// 2. SQLite - used while the snapshot is still loading, and if it ever fails to load.
+/// 3. Windows Search - used before the local database exists, or if SQLite keeps failing.
+///
 /// IMPORTANT: neither Microsoft.Data.Sqlite nor the OLE DB provider used for Windows Search
 /// implement real asynchronous I/O - their *Async methods run synchronously on the calling
 /// thread. Awaiting them straight from the UI thread froze the search box while the query ran.
-/// Every query therefore runs on a thread-pool thread so the message pump (and typing) stays live.
+/// Those queries therefore run on a thread-pool thread so the message pump (and typing) stays
+/// live. The in-memory search is fast enough that only its parallel scan leaves the caller's
+/// thread, which is why it can answer inside a single keystroke.
 /// </summary>
 public partial class SearchManager
 {
     // The SQLite connection is shared, so only one search query may use it at a time.
+    // The in-memory index needs no such gate: its snapshot is immutable.
     private readonly SemaphoreSlim _searchGate = new(1, 1);
 
     /// <summary>
     /// Perform a search using the best available source.
     /// Supports multi-term searches (space-separated words)
     /// </summary>
-    public async Task<(List<FileEntry> Results, SearchSource Source)> SearchAsync(
+    /// <returns>
+    /// The page of results, how many entries matched in total (which is usually far more than
+    /// the page holds), and which source answered. The total is returned rather than stored on
+    /// the manager because searches overlap: a superseded query finishing late would otherwise
+    /// overwrite the count belonging to the one actually on screen.
+    /// </returns>
+    public async Task<(List<FileEntry> Results, int TotalMatches, SearchSource Source)> SearchAsync(
         string query,
         int maxResults = 1000,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(query))
-            return (new List<FileEntry>(), CurrentSource);
+            return (new List<FileEntry>(), 0, CurrentSource);
+
+        // Fastest path: everything is already in RAM.
+        if (_memorySearch.IsReady)
+        {
+            try
+            {
+                var (results, total) = await RunMemorySearchAsync(query, maxResults, cancellationToken);
+                return (results, total, SearchSource.Memory);
+            }
+            catch (OperationCanceledException)
+            {
+                throw; // Superseded by a newer keystroke
+            }
+            catch (Exception ex)
+            {
+                // Never let a snapshot problem break search - drop to the database below.
+                StatusChanged?.Invoke($"In-memory search failed: {ex.Message} - using the database");
+                _memorySearch.Invalidate();
+            }
+        }
 
         // Use SQLite if ready, otherwise Windows Search
         if (_useSqlite)
@@ -34,7 +69,7 @@ public partial class SearchManager
             {
                 var results = await RunSqliteSearchAsync(query, maxResults, cancellationToken);
                 _consecutiveSqliteFailures = 0;
-                return (results, SearchSource.SQLite);
+                return (results, results.Count, SearchSource.SQLite);
             }
             catch (OperationCanceledException)
             {
@@ -58,15 +93,16 @@ public partial class SearchManager
                 if (_windowsSearchAvailable)
                 {
                     var fallbackResults = await RunWindowsSearchAsync(query, maxResults, cancellationToken);
-                    return (fallbackResults, SearchSource.WindowsSearch);
+                    return (fallbackResults, fallbackResults.Count, SearchSource.WindowsSearch);
                 }
-                return (new List<FileEntry>(), SearchSource.SQLite);
+
+                return (new List<FileEntry>(), 0, SearchSource.SQLite);
             }
         }
         else if (_windowsSearchAvailable)
         {
             var results = await RunWindowsSearchAsync(query, maxResults, cancellationToken);
-            return (results, SearchSource.WindowsSearch);
+            return (results, results.Count, SearchSource.WindowsSearch);
         }
         else
         {
@@ -74,7 +110,7 @@ public partial class SearchManager
             try
             {
                 var results = await RunSqliteSearchAsync(query, maxResults, cancellationToken);
-                return (results, SearchSource.SQLite);
+                return (results, results.Count, SearchSource.SQLite);
             }
             catch (OperationCanceledException)
             {
@@ -82,10 +118,24 @@ public partial class SearchManager
             }
             catch
             {
-                return (new List<FileEntry>(), SearchSource.None);
+                return (new List<FileEntry>(), 0, SearchSource.None);
             }
         }
     }
+
+    /// <summary>
+    /// Run the query against the in-memory snapshot. The scan itself already spreads across cores,
+    /// so this only hops off the caller's thread to keep the UI free while it runs.
+    /// </summary>
+    private Task<(List<FileEntry> Results, int Total)> RunMemorySearchAsync(
+        string query, int maxResults, CancellationToken cancellationToken)
+        => Task.Run(() =>
+        {
+            if (!_memorySearch.TrySearch(query, maxResults, cancellationToken, out var results, out var total))
+                throw new InvalidOperationException("The in-memory index is not loaded.");
+
+            return (results, total);
+        }, cancellationToken);
 
     /// <summary>
     /// Run the SQLite query on a thread-pool thread, serialized on the shared connection.

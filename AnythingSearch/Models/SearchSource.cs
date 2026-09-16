@@ -18,5 +18,10 @@ public enum SearchSource
     /// <summary>
     /// Using local SQLite database
     /// </summary>
-    SQLite
+    SQLite,
+
+    /// <summary>
+    /// Using the in-memory index - the fastest source, used whenever a snapshot is loaded
+    /// </summary>
+    Memory
 }

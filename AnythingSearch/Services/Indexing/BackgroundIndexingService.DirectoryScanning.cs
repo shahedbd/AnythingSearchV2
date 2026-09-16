@@ -50,8 +50,55 @@ public partial class BackgroundIndexingService
             }
         }
 
-        return result;
+        // Downloads is queued first so it gets indexed early, but it also sits under
+        // C:\Users\<user>, which AddDriveRoots queues as its own recursive root. Without this
+        // pass the entire Downloads tree is walked - and inserted - twice.
+        return RemoveNestedRoots(result);
     }
+
+    /// <summary>
+    /// Drop any root already covered by another recursive root. Two roots covering the same
+    /// subtree means every entry inside it is scanned, and written, more than once.
+    /// </summary>
+    private static List<ScanRoot> RemoveNestedRoots(List<ScanRoot> roots)
+    {
+        var recursive = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var root in roots)
+        {
+            if (root.Recursive)
+                recursive.Add(Normalize(root.Directory.FullName));
+        }
+
+        var kept = new List<ScanRoot>(roots.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var root in roots)
+        {
+            var path = Normalize(root.Directory.FullName);
+
+            // The same directory queued twice: keep the first, which is the recursive one when a
+            // recursive root was inserted ahead of a non-recursive one.
+            if (!seen.Add(path)) continue;
+            if (IsInsideRecursiveRoot(path, recursive)) continue;
+
+            kept.Add(root);
+        }
+
+        return kept;
+    }
+
+    private static bool IsInsideRecursiveRoot(string path, HashSet<string> recursiveRoots)
+    {
+        var parent = Path.GetDirectoryName(path);
+        while (!string.IsNullOrEmpty(parent))
+        {
+            if (recursiveRoots.Contains(Normalize(parent))) return true;
+            parent = Path.GetDirectoryName(parent);
+        }
+        return false;
+    }
+
+    private static string Normalize(string path) => path.TrimEnd(Path.DirectorySeparatorChar);
 
     /// <summary>
     /// Queue every top-level directory of a drive (split further when large), plus the drive

@@ -1,4 +1,4 @@
-﻿using AnythingSearch.Database;
+using AnythingSearch.Database;
 using AnythingSearch.Services;
 using AnythingSearch.Models;
 using System.Collections.Concurrent;
@@ -81,6 +81,9 @@ public partial class MainForm : Form
         _settingsManager = new SettingsManager();
         _searchManager = new SearchManager(_database, _settingsManager);
         _fileWatcher = new FileWatcherService(_database, _settingsManager);
+        // Changes the watcher writes to SQLite are mirrored into the in-memory index, so a file
+        // created moments ago is searchable without waiting for the next snapshot rebuild.
+        _fileWatcher.AttachMemoryIndex(_searchManager.MemoryIndex);
         _recentSearchService = new RecentSearchService();
 
         _minimizeToTray = _settingsManager.Settings.MinimizeToTray;
