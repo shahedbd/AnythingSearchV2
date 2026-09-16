@@ -12,8 +12,11 @@ namespace AnythingSearch.Services;
 /// 2. Background indexing runs in parallel to build SQLite database
 /// 3. Once SQLite is ready, switch to it for faster, more complete results
 /// 4. Falls back to Windows Search if SQLite fails
+///
+/// Split into partial classes: this file owns initialization and the search/rebuild API;
+/// see SearchManager.Events.cs for the indexing/status event wiring.
 /// </summary>
-public class SearchManager : IDisposable
+public partial class SearchManager : IDisposable
 {
     private readonly WindowsSearchService _windowsSearch;
     private readonly BackgroundIndexingService _indexingService;
@@ -286,64 +289,6 @@ public class SearchManager : IDisposable
         }
     }
 
-    #region Event Handlers
-
-    private void OnDatabaseReady()
-    {
-        _useSqlite = true;
-        _consecutiveSqliteFailures = 0;
-        SearchSourceChanged?.Invoke(SearchSource.SQLite);
-        StatusChanged?.Invoke($"Local database ready - {_indexingService.Status.TotalItems:N0} items indexed");
-    }
-
-    private void OnIndexingProgress(IndexProgress progress)
-    {
-        StatusChanged?.Invoke($"Indexing: {progress.TotalFiles + progress.TotalFolders:N0} items ({progress.ItemsPerSecond:N0}/sec)");
-    }
-
-    private void OnIndexingFailed(string error)
-    {
-        StatusChanged?.Invoke($"Indexing failed: {error}");
-
-        // If Windows Search is available, continue using it
-        if (_windowsSearchAvailable)
-        {
-            StatusChanged?.Invoke("Using Windows Search as fallback");
-        }
-    }
-
-    private void OnWindowsSearchStatus(string status)
-    {
-        if (!_useSqlite)
-        {
-            StatusChanged?.Invoke(status);
-        }
-    }
-
-    #endregion
-
-    #region Expose Indexing Service Events
-
-    /// <summary>
-    /// Subscribe to indexing progress
-    /// </summary>
-    public event Action<IndexProgress>? ProgressChanged
-    {
-        add => _indexingService.ProgressChanged += value;
-        remove => _indexingService.ProgressChanged -= value;
-    }
-
-    /// <summary>
-    /// Subscribe to indexing completion
-    /// </summary>
-    public event Action? IndexingCompleted
-    {
-        add => _indexingService.IndexingCompleted += value;
-        remove => _indexingService.IndexingCompleted -= value;
-    }
-
-    #endregion
-
     public void Dispose()
     {
         if (_disposed) return;
@@ -356,25 +301,4 @@ public class SearchManager : IDisposable
 
         _indexingService.Dispose();
     }
-}
-
-/// <summary>
-/// Indicates which search source is being used
-/// </summary>
-public enum SearchSource
-{
-    /// <summary>
-    /// No search available
-    /// </summary>
-    None,
-
-    /// <summary>
-    /// Using Windows Search Index
-    /// </summary>
-    WindowsSearch,
-
-    /// <summary>
-    /// Using local SQLite database
-    /// </summary>
-    SQLite
 }

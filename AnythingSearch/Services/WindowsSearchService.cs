@@ -173,95 +173,6 @@ public class WindowsSearchService
     }
 
     /// <summary>
-    /// Get all indexed files (for building local cache)
-    /// </summary>
-    public async Task<List<FileEntry>> GetAllIndexedFilesAsync(CancellationToken cancellationToken = default)
-    {
-        var results = new List<FileEntry>();
-        int offset = 0;
-        const int batchSize = 10000;
-
-        StatusChanged?.Invoke("Loading files from Windows Search Index...");
-
-        try
-        {
-            using var connection = new OleDbConnection(ConnectionString);
-            await connection.OpenAsync(cancellationToken);
-
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                // Note: Windows Search doesn't support OFFSET, so we use a workaround
-                var sql = $@"
-                    SELECT TOP {batchSize}
-                        System.ItemName,
-                        System.ItemPathDisplay,
-                        System.Size,
-                        System.DateModified,
-                        System.Kind
-                    FROM SystemIndex
-                    WHERE System.ItemPathDisplay IS NOT NULL
-                ";
-
-                using var command = new OleDbCommand(sql, connection);
-                command.CommandTimeout = 120;
-
-                using var reader = await command.ExecuteReaderAsync(cancellationToken);
-
-                int count = 0;
-                while (await reader.ReadAsync(cancellationToken))
-                {
-                    try
-                    {
-                        var name = reader["System.ItemName"]?.ToString() ?? "";
-                        var path = reader["System.ItemPathDisplay"]?.ToString() ?? "";
-
-                        if (string.IsNullOrEmpty(path)) continue;
-
-                        var size = reader["System.Size"] as long? ?? 0;
-                        var modified = reader["System.DateModified"] as DateTime? ?? DateTime.MinValue;
-                        var kind = reader["System.Kind"]?.ToString() ?? "";
-
-                        results.Add(new FileEntry
-                        {
-                            Name = name,
-                            Path = path,
-                            Extension = Path.GetExtension(name).TrimStart('.'),
-                            Size = size,
-                            Modified = modified,
-                            IsFolder = kind?.Contains("folder", StringComparison.OrdinalIgnoreCase) == true
-                        });
-
-                        count++;
-                    }
-                    catch { }
-                }
-
-                StatusChanged?.Invoke($"Loaded {results.Count:N0} files from Windows Index...");
-
-                if (count < batchSize)
-                    break; // No more results
-
-                offset += batchSize;
-
-                // Safety limit
-                if (results.Count > 5000000)
-                {
-                    StatusChanged?.Invoke("Reached 5M file limit");
-                    break;
-                }
-            }
-
-            StatusChanged?.Invoke($"Loaded {results.Count:N0} files from Windows Search Index");
-        }
-        catch (Exception ex)
-        {
-            StatusChanged?.Invoke($"Error: {ex.Message}");
-        }
-
-        return results;
-    }
-
-    /// <summary>
     /// Check if Windows Search is available
     /// </summary>
     public async Task<bool> IsAvailableAsync()
@@ -276,41 +187,6 @@ public class WindowsSearchService
         {
             return false;
         }
-    }
-
-    /// <summary>
-    /// Get indexed locations
-    /// </summary>
-    public async Task<List<string>> GetIndexedLocationsAsync()
-    {
-        var locations = new List<string>();
-
-        try
-        {
-            var sql = @"
-                SELECT DISTINCT System.ItemFolderPathDisplay
-                FROM SystemIndex
-                WHERE System.ItemFolderPathDisplay IS NOT NULL
-            ";
-
-            using var connection = new OleDbConnection(ConnectionString);
-            await connection.OpenAsync();
-
-            using var command = new OleDbCommand(sql, connection);
-            command.CommandTimeout = 30;
-
-            using var reader = await command.ExecuteReaderAsync();
-
-            while (await reader.ReadAsync())
-            {
-                var path = reader[0]?.ToString();
-                if (!string.IsNullOrEmpty(path))
-                    locations.Add(path);
-            }
-        }
-        catch { }
-
-        return locations.Distinct().Take(100).ToList();
     }
 
     private string EscapeSql(string input)

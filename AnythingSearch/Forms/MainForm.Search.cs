@@ -1,3 +1,4 @@
+using AnythingSearch.Models;
 using AnythingSearch.Services;
 
 namespace AnythingSearch.Forms;

@@ -9,6 +9,16 @@ C:\Users\Public\src\MS_Store_App\NetSpeedMeterPlus\Doc\Requirements
 - Preserve existing behavior unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
+Now review: /Services
+
+And make sure:
+- Keep files small: Target ≤300 lines; 400 lines absolute maximum. Split large files into focused modules.
+
+To make bigger service class to a small class, you can by folder small, small class, helper class etc.
+
+
+
+
 
 
 
