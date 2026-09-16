@@ -9,6 +9,33 @@ C:\Users\Public\src\MS_Store_App\NetSpeedMeterPlus\Doc\Requirements
 - Preserve existing behavior unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
+
+
+
+Implement it: one by one
+1	Delete unused IndexingService.cs	trivial	Medium (maintainability)
+2	Delete unused SearchService.cs	trivial	Medium (maintainability)
+4	Re-enable Start-with-Windows / Minimize-to-tray checkboxes in SettingsForm	small	Medium (feature is built, just hidden)
+3	Single source of truth for app version	small	Low-Medium
+7	Split CommonData.cs per-product	small	Low (clarity)
+5	Rename Backgroundindexingservice.cs → BackgroundIndexingService.cs	trivial	Low (consistency)
+9, 10	Watcher batching / SQLite failure circuit-breaker	medium	Medium (robustness at scale)
+15	Add a minimal test project for FileDatabase/DatabaseStatus	medium	Medium (long-term safety net)
+
+- Keep files small: Target ≤300 lines; 400 lines absolute maximum. Split large files into focused modules.
+- Skip build, test, publish, deployment, migration, and package commands unless explicitly requested; I will handle them.
+- Optimize token usage: inspect only relevant files and make the smallest necessary changes.
+- Follow the existing architecture, documentation, patterns, naming conventions, and coding style.
+- Reuse existing code and dependencies; avoid unnecessary refactoring or new dependencies.
+- Preserve existing behavior unless the task requires otherwise.
+- Keep responses concise and report only important changes, affected files, and caveats.
+
+
+
+
+
+
+
 Understand full Project first.
 
 Now write doc:

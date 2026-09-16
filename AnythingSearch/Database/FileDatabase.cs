@@ -40,12 +40,23 @@ public class FileDatabase : IDisposable
     private SqliteCommand? _insertFolderCommand;
     private bool _inTransaction = false;
 
-    public FileDatabase()
+    /// <param name="dbPathOverride">
+    /// Optional explicit database file path, used by automated tests so they never touch the
+    /// real user database under %LocalAppData%. Production code should keep using the
+    /// parameterless default.
+    /// </param>
+    public FileDatabase(string? dbPathOverride = null)
     {
         if (!_initialized)
         {
             SQLitePCL.Batteries.Init();
             _initialized = true;
+        }
+
+        if (dbPathOverride != null)
+        {
+            _dbPath = dbPathOverride;
+            return;
         }
 
         var appData = Path.Combine(
@@ -576,6 +587,27 @@ public class FileDatabase : IDisposable
     {
         using var cmd = new SqliteCommand(sql, _connection);
         await cmd.ExecuteNonQueryAsync();
+    }
+
+    private bool _inIncrementalTransaction = false;
+
+    /// <summary>
+    /// Wraps a batch of incremental writes (InsertSingleAsync/DeleteByPathAsync/UpdatePathAsync/UpdateFileAsync)
+    /// in a single transaction instead of SQLite's default one-transaction-per-statement autocommit.
+    /// Used by FileWatcherService when flushing a batch of debounced file-system changes.
+    /// </summary>
+    public async Task BeginIncrementalTransactionAsync()
+    {
+        if (_inIncrementalTransaction) return;
+        await ExecuteNonQueryAsync("BEGIN TRANSACTION");
+        _inIncrementalTransaction = true;
+    }
+
+    public async Task CommitIncrementalTransactionAsync()
+    {
+        if (!_inIncrementalTransaction) return;
+        await ExecuteNonQueryAsync("COMMIT");
+        _inIncrementalTransaction = false;
     }
 
     public void Dispose()

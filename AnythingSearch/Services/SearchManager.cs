@@ -23,6 +23,10 @@ public class SearchManager : IDisposable
     private bool _windowsSearchAvailable = false;
     private bool _disposed = false;
 
+    // Circuit breaker: stop hammering a broken SQLite database on every keystroke
+    private int _consecutiveSqliteFailures = 0;
+    private const int MaxConsecutiveSqliteFailures = 3;
+
     /// <summary>
     /// Fired when the search source changes
     /// </summary>
@@ -148,11 +152,23 @@ public class SearchManager : IDisposable
                     results = await _database.SearchAsync(query, maxResults);
                 }
 
+                _consecutiveSqliteFailures = 0;
                 return (results, SearchSource.SQLite);
             }
             catch (Exception ex)
             {
+                _consecutiveSqliteFailures++;
                 StatusChanged?.Invoke($"SQLite search failed: {ex.Message}, falling back to Windows Search");
+
+                // If SQLite keeps failing (e.g. a corrupted database), stop retrying it on every
+                // keystroke and switch the active source until the index is rebuilt.
+                if (_consecutiveSqliteFailures >= MaxConsecutiveSqliteFailures)
+                {
+                    _useSqlite = false;
+                    SearchSourceChanged?.Invoke(CurrentSource);
+                    StatusChanged?.Invoke("SQLite search failed repeatedly - switched to Windows Search. Rebuild the index to restore the local database.");
+                }
+
                 // Fall back to Windows Search
                 if (_windowsSearchAvailable)
                 {
@@ -275,6 +291,7 @@ public class SearchManager : IDisposable
     private void OnDatabaseReady()
     {
         _useSqlite = true;
+        _consecutiveSqliteFailures = 0;
         SearchSourceChanged?.Invoke(SearchSource.SQLite);
         StatusChanged?.Invoke($"Local database ready - {_indexingService.Status.TotalItems:N0} items indexed");
     }

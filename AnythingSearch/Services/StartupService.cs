@@ -21,7 +21,7 @@ namespace AnythingSearch.Services
                         if (Settings.Default.IsNewInstallations == true)
                         {
                             await CommonHelper.StartProcessAsync(CommonData.AnythingSearchProfile);
-                            await CommonHelper.StartProcessAsync(CommonData.NetSpeedMeterProMicrosoftStore);
+                            await CommonHelper.StartProcessAsync(CrossPromotionData.NetSpeedMeterProMicrosoftStore);
 
                             Settings.Default.IsNewInstallations = false;
                             Settings.Default.AppInstalledDate = DateTime.Now;

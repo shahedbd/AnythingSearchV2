@@ -83,6 +83,8 @@ public partial class MainForm : Form
         _fileWatcher = new FileWatcherService(_database, _settingsManager);
         _recentSearchService = new RecentSearchService();
 
+        _minimizeToTray = _settingsManager.Settings.MinimizeToTray;
+
         _folderIcon = GetStockIcon(StockIconId.Folder);
         _fileIcon = GetStockIcon(StockIconId.DocumentNotAssociated);
 

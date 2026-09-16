@@ -43,7 +43,7 @@ public partial class SettingsForm : Form
         this.AutoScaleDimensions = new SizeF(96F, 96F);
         this.Font = new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
 
-        this.ClientSize = new Size(500, 500);
+        this.ClientSize = new Size(500, 560);
         this.FormBorderStyle = FormBorderStyle.FixedDialog;
         this.MaximizeBox = false;
         this.MinimizeBox = false;
@@ -96,13 +96,13 @@ public partial class SettingsForm : Form
         btnRemoveFolder = CreateButton("Remove", new Point(390, 156), new Size(90, 32));
         btnRemoveFolder.Click += BtnRemoveFolder_Click;
 
-        // Options Section
+        // Options Section (placed below the excluded-folders list, which ends at y=418)
         var lblOptions = new Label
         {
             Text = "Options",
             Font = new Font("Segoe UI Semibold", 11F),
             ForeColor = TextPrimary,
-            Location = new Point(24, 320),
+            Location = new Point(24, 428),
             AutoSize = true
         };
 
@@ -111,7 +111,7 @@ public partial class SettingsForm : Form
             Text = "Start with Windows",
             Font = new Font("Segoe UI", 9.5F),
             ForeColor = TextPrimary,
-            Location = new Point(24, 350),
+            Location = new Point(24, 458),
             AutoSize = true,
             Cursor = Cursors.Hand
         };
@@ -121,25 +121,25 @@ public partial class SettingsForm : Form
             Text = "Minimize to system tray when closing",
             Font = new Font("Segoe UI", 9.5F),
             ForeColor = TextPrimary,
-            Location = new Point(24, 378),
+            Location = new Point(24, 486),
             AutoSize = true,
             Cursor = Cursors.Hand
         };
 
         // Buttons
-        btnSave = CreateButton("Save", new Point(290, 450), new Size(100, 36));
+        btnSave = CreateButton("Save", new Point(290, 515), new Size(100, 36));
         btnSave.BackColor = PrimaryColor;
         btnSave.ForeColor = Color.White;
         btnSave.Click += BtnSave_Click;
 
-        btnCancel = CreateButton("Cancel", new Point(400, 450), new Size(80, 36));
+        btnCancel = CreateButton("Cancel", new Point(400, 515), new Size(80, 36));
         btnCancel.Click += (s, e) => Close();
 
         this.Controls.AddRange(new Control[]
         {
             lblTitle, lblExcluded, lblExcludedDesc, lstExcludedFolders,
             btnAddFolder, btnRemoveFolder,
-            //lblOptions, chkStartWithWindows, chkMinimizeToTray,
+            lblOptions, chkStartWithWindows, chkMinimizeToTray,
             btnSave, btnCancel
         });
 

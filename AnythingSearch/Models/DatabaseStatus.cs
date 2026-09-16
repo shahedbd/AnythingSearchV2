@@ -15,6 +15,13 @@ public class DatabaseStatus
         "database_status.json");
 
     /// <summary>
+    /// Path this instance persists to. Defaults to the shared app-data location; automated
+    /// tests use <see cref="Load(string?)"/>'s override so they never touch real user data.
+    /// (Private field - not serialized by System.Text.Json.)
+    /// </summary>
+    private string _filePath = StatusFilePath;
+
+    /// <summary>
     /// Current state of the database
     /// </summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -84,22 +91,30 @@ public class DatabaseStatus
     public long TotalItems => TotalFiles + TotalFolders;
 
     /// <summary>
-    /// Load status from JSON file
+    /// Load status from JSON file.
     /// </summary>
-    public static DatabaseStatus Load()
+    /// <param name="filePathOverride">
+    /// Optional explicit file path, used by automated tests so they never touch the real
+    /// user status file under %LocalAppData%. Production code should keep using the
+    /// parameterless default.
+    /// </param>
+    public static DatabaseStatus Load(string? filePathOverride = null)
     {
+        var path = filePathOverride ?? StatusFilePath;
+
         try
         {
-            System.Diagnostics.Debug.WriteLine($"[DatabaseStatus] Loading from: {StatusFilePath}");
+            System.Diagnostics.Debug.WriteLine($"[DatabaseStatus] Loading from: {path}");
 
-            if (File.Exists(StatusFilePath))
+            if (File.Exists(path))
             {
-                var json = File.ReadAllText(StatusFilePath);
+                var json = File.ReadAllText(path);
                 System.Diagnostics.Debug.WriteLine($"[DatabaseStatus] JSON content: {json}");
 
                 var status = JsonSerializer.Deserialize<DatabaseStatus>(json);
                 if (status != null)
                 {
+                    status._filePath = path;
                     System.Diagnostics.Debug.WriteLine($"[DatabaseStatus] Loaded state: {status.State}, TotalItems: {status.TotalItems}");
 
                     // If app crashed during indexing, mark as failed
@@ -123,7 +138,7 @@ public class DatabaseStatus
             System.Diagnostics.Debug.WriteLine($"[DatabaseStatus] Failed to load: {ex.Message}");
         }
 
-        return new DatabaseStatus();
+        return new DatabaseStatus { _filePath = path };
     }
 
     /// <summary>
@@ -133,7 +148,7 @@ public class DatabaseStatus
     {
         try
         {
-            var directory = Path.GetDirectoryName(StatusFilePath);
+            var directory = Path.GetDirectoryName(_filePath);
             if (!string.IsNullOrEmpty(directory))
                 Directory.CreateDirectory(directory);
 
@@ -143,7 +158,7 @@ public class DatabaseStatus
             };
 
             var json = JsonSerializer.Serialize(this, options);
-            File.WriteAllText(StatusFilePath, json);
+            File.WriteAllText(_filePath, json);
         }
         catch (Exception ex)
         {

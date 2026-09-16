@@ -19,6 +19,7 @@ public class FileWatcherService : IDisposable
 
     // Buffer overflow protection
     private const int MaxPendingChanges = 10000;
+    private const int HighWaterMark = MaxPendingChanges / 2;
     private const int ProcessIntervalMs = 3000; // Process every 3 seconds
     private const int DebounceMs = 500; // Ignore duplicate changes within 500ms
 
@@ -231,6 +232,13 @@ public class FileWatcherService : IDisposable
             return;
         }
 
+        // Drain early once the queue is getting full, instead of waiting for the next
+        // scheduled tick, so we're less likely to ever hit MaxPendingChanges and start dropping changes.
+        if (_pendingChanges.Count >= HighWaterMark && !_isProcessing)
+        {
+            Task.Run(async () => await ProcessChangesAsync());
+        }
+
         var change = new FileSystemChange
         {
             Type = type,
@@ -314,42 +322,51 @@ public class FileWatcherService : IDisposable
             int processed = 0;
             int errors = 0;
 
-            // Process each change individually (no batch transaction)
-            foreach (var change in sortedChanges)
+            // Process the whole batch inside a single transaction instead of one
+            // implicit SQLite transaction per statement (faster and atomic per batch).
+            await _database.BeginIncrementalTransactionAsync();
+            try
             {
-                try
+                foreach (var change in sortedChanges)
                 {
-                    switch (change.Type)
+                    try
                     {
-                        case ChangeType.Created:
-                            await HandleCreatedAsync(change.Path);
-                            processed++;
-                            break;
-
-                        case ChangeType.Deleted:
-                            await HandleDeletedAsync(change.Path);
-                            processed++;
-                            break;
-
-                        case ChangeType.Renamed:
-                            if (!string.IsNullOrEmpty(change.OldPath))
-                            {
-                                await HandleRenamedAsync(change.OldPath, change.Path);
+                        switch (change.Type)
+                        {
+                            case ChangeType.Created:
+                                await HandleCreatedAsync(change.Path);
                                 processed++;
-                            }
-                            break;
+                                break;
 
-                        case ChangeType.Modified:
-                            await HandleModifiedAsync(change.Path);
-                            processed++;
-                            break;
+                            case ChangeType.Deleted:
+                                await HandleDeletedAsync(change.Path);
+                                processed++;
+                                break;
+
+                            case ChangeType.Renamed:
+                                if (!string.IsNullOrEmpty(change.OldPath))
+                                {
+                                    await HandleRenamedAsync(change.OldPath, change.Path);
+                                    processed++;
+                                }
+                                break;
+
+                            case ChangeType.Modified:
+                                await HandleModifiedAsync(change.Path);
+                                processed++;
+                                break;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"FileWatcher error: {ex.Message}");
+                        errors++;
                     }
                 }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"FileWatcher error: {ex.Message}");
-                    errors++;
-                }
+            }
+            finally
+            {
+                await _database.CommitIncrementalTransactionAsync();
             }
 
             if (processed > 0)

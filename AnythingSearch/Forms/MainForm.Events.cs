@@ -52,6 +52,9 @@ public partial class MainForm
     {
         var settingsForm = new SettingsForm(_settingsManager);
         settingsForm.ShowDialog(this);
+
+        // Settings may have changed Minimize-to-Tray; apply it without requiring a restart
+        _minimizeToTray = _settingsManager.Settings.MinimizeToTray;
     }
 
     #endregion
