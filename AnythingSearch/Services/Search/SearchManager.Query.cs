@@ -126,6 +126,11 @@ public partial class SearchManager
     /// <summary>
     /// Run the query against the in-memory snapshot. The scan itself already spreads across cores,
     /// so this only hops off the caller's thread to keep the UI free while it runs.
+    ///
+    /// The token is passed to the search but deliberately NOT to Task.Run: that overload raises a
+    /// TaskCanceledException when the token is already set at scheduling time, which on a search
+    /// box is simply what happens whenever someone types quickly. The scan checks the token and
+    /// returns early instead, so a superseded search on this path costs no exception at all.
     /// </summary>
     private Task<(List<FileEntry> Results, int Total)> RunMemorySearchAsync(
         string query, int maxResults, CancellationToken cancellationToken)
@@ -135,7 +140,7 @@ public partial class SearchManager
                 throw new InvalidOperationException("The in-memory index is not loaded.");
 
             return (results, total);
-        }, cancellationToken);
+        });
 
     /// <summary>
     /// Run the SQLite query on a thread-pool thread, serialized on the shared connection.

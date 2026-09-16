@@ -9,6 +9,26 @@ C:\Users\Public\src\MS_Store_App\NetSpeedMeterPlus\Doc\Requirements
 - Preserve existing behavior unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
+Now fix this new error:
+System.OperationCanceledException: 'The operation was canceled.'
+
+Get errors at:
+/Services/Memory/MemoryFileIndex
+
+Line:  286
+ if ((f & 0xFFF) == 0) cancellationToken.ThrowIfCancellationRequested();
+
+ - Keep files small: Target ≤300 lines; 400 lines absolute maximum. Split large files into focused modules.
+- Skip build, test, publish, deployment, migration, and package commands unless explicitly requested; I will handle them.
+- Optimize token usage: inspect only relevant files and make the smallest necessary changes.
+- Follow the existing architecture, documentation, patterns, naming conventions, and coding style.
+- Reuse existing code and dependencies; avoid unnecessary refactoring or new dependencies.
+- Preserve existing behavior unless the task requires otherwise.
+- Keep responses concise and report only important changes, affected files, and caveats.
+
+
+
+
 
 I just comare search performance AnythingSearch vs Everything.
 I type in search input: shahed

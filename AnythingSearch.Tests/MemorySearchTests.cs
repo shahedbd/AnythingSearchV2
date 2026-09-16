@@ -225,7 +225,7 @@ public class MemorySearchTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Search_IsCancellable()
+    public async Task Search_AbandonsACancelledSearchWithoutThrowing()
     {
         await AddManyAsync(Enumerable.Range(0, 60_000).Select(i => $@"C:\bulk\f{i % 100}\item{i}.txt"));
 
@@ -233,7 +233,17 @@ public class MemorySearchTests : IAsyncLifetime
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        Assert.Throws<OperationCanceledException>(
-            () => index.Search("item", 100, cts.Token, out _));
+        // Every keystroke cancels the search before it, so cancellation here is the normal case,
+        // not a fault - it returns an empty result rather than raising an exception the caller
+        // would have to unwind on every character typed.
+        var hits = index.Search("item", 100, cts.Token, out var total);
+
+        Assert.Empty(hits);
+        Assert.Equal(0, total);
+
+        // The same query still works once nothing is cancelling it.
+        var afterwards = index.Search("item", 100, CancellationToken.None, out var afterwardsTotal);
+        Assert.Equal(100, afterwards.Count);
+        Assert.Equal(60_000, afterwardsTotal);
     }
 }

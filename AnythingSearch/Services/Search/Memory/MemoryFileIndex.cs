@@ -125,6 +125,14 @@ public sealed class MemoryFileIndex
     /// The real number of matches, which is normally larger than the returned list - the caller
     /// only ever displays <paramref name="limit"/> rows.
     /// </param>
+    /// <remarks>
+    /// Cancellation does NOT throw. Every keystroke supersedes the search before it, so on this
+    /// path cancellation is the normal case rather than an exceptional one - throwing meant
+    /// building and unwinding an exception through several frames for every character typed, and
+    /// it stopped the debugger on a condition that was never a fault. A cancelled search abandons
+    /// its scan and returns an empty result instead; callers already discard the result of a
+    /// search they cancelled, so nothing downstream has to change.
+    /// </remarks>
     public List<int> Search(string query, int limit, CancellationToken cancellationToken, out int totalMatches)
     {
         totalMatches = 0;
@@ -157,38 +165,38 @@ public sealed class MemoryFileIndex
         var counts = new int[partitions];
         var merged = new RankedHitHeap(limit);
 
-        try
+        // Pass 1 - name matches, split across cores over the name blob. Partition boundaries are
+        // aligned to 64 entries so no two threads ever write the same word of nameMatched, which
+        // keeps the bitmap lock-free.
+        Parallel.For(0, partitions, p =>
         {
-            // Pass 1 - name matches, split across cores over the name blob. Partition boundaries
-            // are aligned to 64 entries so no two threads ever write the same word of
-            // nameMatched, which keeps the bitmap lock-free.
-            Parallel.For(0, partitions, p =>
-            {
-                int lo = AlignPartition((int)((long)Count * p / partitions));
-                int hi = p == partitions - 1 ? Count : AlignPartition((int)((long)Count * (p + 1) / partitions));
-                var heap = new RankedHitHeap(limit);
-                counts[p] = ScanNames(lo, hi, patterns, folderHits, heap, nameMatched, cancellationToken);
-                heaps[p] = heap;
-            });
+            int lo = AlignPartition((int)((long)Count * p / partitions));
+            int hi = p == partitions - 1 ? Count : AlignPartition((int)((long)Count * (p + 1) / partitions));
+            var heap = new RankedHitHeap(limit);
+            counts[p] = ScanNames(lo, hi, patterns, folderHits, heap, nameMatched, cancellationToken);
+            heaps[p] = heap;
+        });
 
-            for (int p = 0; p < partitions; p++)
-            {
-                merged.AddRange(heaps[p]);
-                totalMatches += counts[p];
-            }
-
-            // Pass 2 - entries that match only because their FOLDER PATH contains the first term.
-            // Run once over the matching folders (never per partition), and skipped entirely when
-            // no folder matched, which is the common case for a distinctive term.
-            if (needFolderPass)
-                totalMatches += ScanFolderMatches(patterns, folderHits, merged, nameMatched!, cancellationToken);
-        }
-        catch (AggregateException ex) when (ex.InnerException is OperationCanceledException inner)
+        for (int p = 0; p < partitions; p++)
         {
-            throw inner;
+            merged.AddRange(heaps[p]);
+            totalMatches += counts[p];
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
+        // Pass 2 - entries that match only because their FOLDER PATH contains the first term.
+        // Run once over the matching folders (never per partition), and skipped entirely when
+        // no folder matched, which is the common case for a distinctive term.
+        if (needFolderPass)
+            totalMatches += ScanFolderMatches(patterns, folderHits, merged, nameMatched!, cancellationToken);
+
+        // Superseded part-way through: the counts and the heap only cover the part of the index
+        // that was scanned, so report nothing rather than a misleading partial answer.
+        if (cancellationToken.IsCancellationRequested)
+        {
+            totalMatches = 0;
+            return new List<int>();
+        }
+
         return SortKeys(merged);
     }
 
@@ -244,7 +252,10 @@ public sealed class MemoryFileIndex
             if (found < 0) break;
 
             int index = _names.IndexOfOffsetFrom(pos + found, hint, hi);
-            if ((++probes & 0xFFFF) == 0) cancellationToken.ThrowIfCancellationRequested();
+
+            // Stop rather than throw: a superseded search is ordinary control flow here, and the
+            // partial result is discarded by the caller either way. See Search().
+            if ((++probes & 0xFFFF) == 0 && cancellationToken.IsCancellationRequested) break;
 
             if (nameMatched != null)
                 nameMatched[index >> 6] |= 1UL << (index & 63);
@@ -282,8 +293,11 @@ public sealed class MemoryFileIndex
 
         for (int f = 0; f < _folders.Count; f++)
         {
+            // Checked before the skip below, not after it: tucked in behind the `continue` this
+            // only ran for folders that both matched and sat on a 4096 boundary, so a long scan
+            // could go a very long time without noticing it had been superseded.
+            if ((f & 0xFFF) == 0 && cancellationToken.IsCancellationRequested) break;
             if ((bitmap[f >> 6] & (1UL << (f & 63))) == 0) continue;
-            if ((f & 0xFFF) == 0) cancellationToken.ThrowIfCancellationRequested();
 
             int to = _folderFileStart[f + 1];
             for (int k = _folderFileStart[f]; k < to; k++)
@@ -302,6 +316,7 @@ public sealed class MemoryFileIndex
         return matches;
     }
 
+    /// <summary>
     /// Terms after the first are checked one entry at a time: a term matches if it is in the name
     /// or anywhere in the folder path (which the prepared bitmap answers in one bit test).
     /// </summary>
@@ -346,7 +361,7 @@ public sealed class MemoryFileIndex
             int folder = _folders.IndexOfOffset(pos + found, 0, _folders.Count);
             bitmap[folder >> 6] |= 1UL << (folder & 63);
 
-            if ((folder & 0x3FFF) == 0) cancellationToken.ThrowIfCancellationRequested();
+            if ((folder & 0x3FFF) == 0 && cancellationToken.IsCancellationRequested) break;
             pos = _folders.StartOf(folder + 1);
         }
 
