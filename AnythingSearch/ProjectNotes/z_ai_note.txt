@@ -9,6 +9,22 @@ C:\Users\Public\src\MS_Store_App\NetSpeedMeterPlus\Doc\Requirements
 - Preserve existing behavior unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
+
+
+
+
+
+
+Our App DB Size: 
+C:\Users\User\AppData\Local\AnythingSearch\AnythingSearch.db, AnythingSearch.db-wal
+430+23.1 = 453.1 MB
+
+Everything App DB Size: Everything.db
+C:\Users\User\AppData\Local\Everything\Everything.db
+
+
+
+
 Test this file search using test project:
 G:\src\MS_Store_App\MsStoreAppDashboard\doc\TECH_SPEC.md
 

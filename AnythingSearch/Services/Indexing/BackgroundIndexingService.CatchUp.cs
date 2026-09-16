@@ -79,6 +79,18 @@ public partial class BackgroundIndexingService
     }
 
     /// <summary>
+    /// Reconcile a single directory tree instead of every fixed drive.
+    /// Test seam for IndexCatchUpTests - production code calls <see cref="RunCatchUpAsync"/>.
+    /// </summary>
+    internal async Task<(int Added, int Removed)> RunCatchUpForRootAsync(
+        string rootPath, CancellationToken cancellationToken = default)
+    {
+        var indexedFolders = await _database.GetFolderModifiedMapAsync(cancellationToken);
+        var root = new ScanRoot(new DirectoryInfo(rootPath), true);
+        return await CatchUpRootAsync(root, indexedFolders, cancellationToken);
+    }
+
+    /// <summary>
     /// Walk one scan root, re-reading only the directories whose timestamp changed.
     /// </summary>
     private async Task<(int Added, int Removed)> CatchUpRootAsync(

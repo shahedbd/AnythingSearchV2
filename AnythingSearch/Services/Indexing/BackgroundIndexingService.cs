@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Threading.Channels;
 using AnythingSearch.Models;
 using AnythingSearch.Database;
@@ -58,11 +58,18 @@ public partial class BackgroundIndexingService : IDisposable
     public bool IsDatabaseReady => _status.IsReady;
     public DatabaseStatus Status => _status;
 
-    public BackgroundIndexingService(FileDatabase database, SettingsManager settingsManager)
+    /// <param name="statusFilePathOverride">
+    /// Optional explicit database_status.json path, used by automated tests so they never touch
+    /// the real status file under %LocalAppData%. Production code uses the default.
+    /// </param>
+    public BackgroundIndexingService(
+        FileDatabase database,
+        SettingsManager settingsManager,
+        string? statusFilePathOverride = null)
     {
         _database = database;
         _settingsManager = settingsManager;
-        _status = DatabaseStatus.Load();
+        _status = DatabaseStatus.Load(statusFilePathOverride);
     }
 
     /// <summary>
