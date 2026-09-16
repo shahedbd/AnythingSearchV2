@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 
 namespace AnythingSearch.Database;
 
@@ -15,6 +15,7 @@ public partial class FileDatabase
     /// </summary>
     public async Task<Dictionary<string, long>> GetFolderModifiedMapAsync(CancellationToken cancellationToken = default)
     {
+        using var dbLock = await LockAsync();
         var map = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
 
         var sql = @"
@@ -39,6 +40,7 @@ public partial class FileDatabase
     /// </summary>
     public async Task<HashSet<string>> GetChildNamesAsync(string folderPath, CancellationToken cancellationToken = default)
     {
+        using var dbLock = await LockAsync();
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         var sql = @"
@@ -66,6 +68,7 @@ public partial class FileDatabase
     /// </summary>
     public async Task UpdateFolderModifiedAsync(string folderFullPath, DateTime modified)
     {
+        using var dbLock = await LockAsync();
         var parentPath = Path.GetDirectoryName(folderFullPath) ?? "";
         var name = Path.GetFileName(folderFullPath);
         if (string.IsNullOrEmpty(name)) return;

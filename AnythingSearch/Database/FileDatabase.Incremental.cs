@@ -1,4 +1,4 @@
-using AnythingSearch.Models;
+﻿using AnythingSearch.Models;
 using Microsoft.Data.Sqlite;
 
 namespace AnythingSearch.Database;
@@ -16,6 +16,7 @@ public partial class FileDatabase
     /// </summary>
     public async Task InsertSingleAsync(FileEntry entry)
     {
+        using var dbLock = await LockAsync();
         var folderPath = Path.GetDirectoryName(entry.Path) ?? "";
         
         // Ensure folder exists
@@ -71,6 +72,7 @@ public partial class FileDatabase
 
     public async Task DeleteByPathAsync(string path)
     {
+        using var dbLock = await LockAsync();
         var folderPath = Path.GetDirectoryName(path) ?? "";
         var fileName = Path.GetFileName(path);
 
@@ -104,6 +106,7 @@ public partial class FileDatabase
     /// </summary>
     public async Task<int> UpdatePathAsync(string oldPath, string newPath)
     {
+        using var dbLock = await LockAsync();
         var oldFolderPath = Path.GetDirectoryName(oldPath) ?? "";
         var oldFileName = Path.GetFileName(oldPath);
         var newFolderPath = Path.GetDirectoryName(newPath) ?? "";
@@ -129,6 +132,7 @@ public partial class FileDatabase
 
     public async Task UpdateFileAsync(FileEntry entry)
     {
+        using var dbLock = await LockAsync();
         var folderPath = Path.GetDirectoryName(entry.Path) ?? "";
 
         var sql = @"
@@ -156,6 +160,7 @@ public partial class FileDatabase
 
     public async Task<bool> ExistsAsync(string path)
     {
+        using var dbLock = await LockAsync();
         var folderPath = Path.GetDirectoryName(path) ?? "";
         var fileName = Path.GetFileName(path);
 
@@ -180,6 +185,7 @@ public partial class FileDatabase
     /// </summary>
     public async Task BeginIncrementalTransactionAsync()
     {
+        using var dbLock = await LockAsync();
         if (_inIncrementalTransaction) return;
         await ExecuteNonQueryAsync("BEGIN TRANSACTION");
         _inIncrementalTransaction = true;
@@ -187,6 +193,7 @@ public partial class FileDatabase
 
     public async Task CommitIncrementalTransactionAsync()
     {
+        using var dbLock = await LockAsync();
         if (!_inIncrementalTransaction) return;
         await ExecuteNonQueryAsync("COMMIT");
         _inIncrementalTransaction = false;

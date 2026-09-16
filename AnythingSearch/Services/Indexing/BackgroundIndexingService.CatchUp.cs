@@ -39,12 +39,28 @@ public partial class BackgroundIndexingService
 
             var indexedFolders = await _database.GetFolderModifiedMapAsync(cancellationToken);
 
-            foreach (var root in CollectRootDirectories())
+            var roots = CollectRootDirectories();
+            var done = 0;
+
+            foreach (var root in roots)
             {
                 if (cancellationToken.IsCancellationRequested) break;
-                var (a, r) = await CatchUpRootAsync(root, indexedFolders, cancellationToken);
-                added += a;
-                removed += r;
+
+                try
+                {
+                    // One unreadable root must never abort the whole pass
+                    var (a, r) = await CatchUpRootAsync(root, indexedFolders, cancellationToken);
+                    added += a;
+                    removed += r;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[CatchUp] {root.Directory.FullName}: {ex.Message}");
+                }
+
+                done++;
+                if (done % 20 == 0 || added + removed > 0)
+                    CatchUpStatusChanged?.Invoke($"Checking for changes ({done}/{roots.Count}) - {added:N0} added, {removed:N0} removed");
             }
 
             CatchUpStatusChanged?.Invoke(added == 0 && removed == 0

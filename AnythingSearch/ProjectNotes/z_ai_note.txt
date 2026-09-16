@@ -9,6 +9,22 @@ C:\Users\Public\src\MS_Store_App\NetSpeedMeterPlus\Doc\Requirements
 - Preserve existing behavior unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
+Test this file search using test project:
+G:\src\MS_Store_App\MsStoreAppDashboard\doc\TECH_SPEC.md
+
+
+
+
+
+Still app is not showing this file in search result:
+G:\src\MS_Store_App\MsStoreAppDashboard\doc\TECH_SPEC.md
+
+
+
+
+
+
+
 Now fix new file is not cover in our system: Anything
 But Everything app, doing it perfectly.
 

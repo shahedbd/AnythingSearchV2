@@ -40,6 +40,26 @@ public partial class FileDatabase : IDisposable
     private SqliteCommand? _insertFolderCommand;
     private bool _inTransaction = false;
 
+    // One shared SqliteConnection is used by the search box, the file watcher and the index
+    // catch-up pass, all on different threads. SQLite will not let the same connection write to
+    // a table while one of its own readers is still open ("database table is locked"), so every
+    // runtime operation is serialized through this gate. The bulk index build is not gated:
+    // it owns the database exclusively while it runs.
+    private readonly SemaphoreSlim _gate = new(1, 1);
+
+    private async Task<IDisposable> LockAsync(CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        return new GateReleaser(_gate);
+    }
+
+    private sealed class GateReleaser : IDisposable
+    {
+        private readonly SemaphoreSlim _semaphore;
+        public GateReleaser(SemaphoreSlim semaphore) => _semaphore = semaphore;
+        public void Dispose() => _semaphore.Release();
+    }
+
     /// <param name="dbPathOverride">
     /// Optional explicit database file path, used by automated tests so they never touch the
     /// real user database under %LocalAppData%. Production code should keep using the
@@ -304,6 +324,7 @@ public partial class FileDatabase : IDisposable
     /// </summary>
     public async Task<List<FileEntry>> SearchAsync(string query, int limit = 1000, CancellationToken cancellationToken = default)
     {
+        using var dbLock = await LockAsync();
         var results = new List<FileEntry>();
 
         // Escape special SQL LIKE characters - the ESCAPE '\' clause below tells SQLite
@@ -369,6 +390,7 @@ public partial class FileDatabase : IDisposable
     /// </summary>
     public async Task<List<FileEntry>> SearchAdvancedAsync(string query, int limit = 1000, CancellationToken cancellationToken = default)
     {
+        using var dbLock = await LockAsync();
         var results = new List<FileEntry>();
         
         // Split query into terms
@@ -431,6 +453,7 @@ public partial class FileDatabase : IDisposable
 
     public async Task<long> GetCountAsync()
     {
+        using var dbLock = await LockAsync();
         using var cmd = new SqliteCommand("SELECT COUNT(*) FROM Files", _connection);
         var result = await cmd.ExecuteScalarAsync();
         return result != null ? Convert.ToInt64(result) : 0;
@@ -447,5 +470,6 @@ public partial class FileDatabase : IDisposable
         _insertFileCommand?.Dispose();
         _insertFolderCommand?.Dispose();
         _connection?.Dispose();
+        _gate.Dispose();
     }
 }
