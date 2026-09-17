@@ -10,6 +10,12 @@ internal static class Program
     [STAThread]
     static void Main()
     {
+        // First statement in the process, deliberately. Everything below can throw - the
+        // single-instance check reads other processes' modules, and MainForm's constructor opens
+        // the database and starts background work - and until this runs, a throw anywhere means
+        // the raw .NET crash dialog and an empty log.
+        CrashHandler.Install();
+
         if (CommonHelper.PriorProcess() != null)
         {
             MessageBox.Show("Another instance of the app is already running.");
@@ -28,7 +34,18 @@ internal static class Program
         // Set default font for the entire application (DPI-aware)
         Application.SetDefaultFont(new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point));
 
-        // Run the main form
-        Application.Run(new MainForm());
+        // Run the main form. The guard covers the two windows Application.ThreadException cannot:
+        // MainForm's constructor, which runs before the message loop starts and is where the
+        // database is opened and the background services are wired up, and anything that escapes
+        // the loop itself. Both used to end as a bare Windows crash dialog with nothing logged.
+        try
+        {
+            Application.Run(new MainForm());
+        }
+        catch (Exception ex)
+        {
+            CrashHandler.ReportStartupFailure(ex);
+            Environment.ExitCode = 1;
+        }
     }
 }

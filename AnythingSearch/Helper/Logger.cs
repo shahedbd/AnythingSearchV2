@@ -70,6 +70,20 @@ namespace AnythingSearch.Helper
             }
         }
 
+        /// <summary>
+        /// Full path of the live log file, or null while the log directory cannot be resolved.
+        /// Exposed so <see cref="CrashHandler"/> can tell the user which file to attach to a
+        /// support report, rather than composing "app_log.txt" a second time somewhere else.
+        /// </summary>
+        public static string? LogFilePath
+        {
+            get
+            {
+                string? directory = TryGetLogDirectory();
+                return directory == null ? null : LivePath(directory);
+            }
+        }
+
         // ─────────────────────────────────────────────────────────────────────
         // WRITE
         // ─────────────────────────────────────────────────────────────────────
