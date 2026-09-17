@@ -69,6 +69,20 @@ public partial class MainForm : Form
 
     #endregion
 
+    #region Shutdown
+
+    /// <summary>
+    /// Upper bound on how long closing waits for the indexing pipeline and the watcher's current
+    /// batch. Generous enough for a chunk that has just begun committing, short enough that a
+    /// wedged walk cannot leave the user with a window that will not close.
+    /// </summary>
+    private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(10);
+
+    private bool _shutdownStarted;
+    private bool _shutdownComplete;
+
+    #endregion
+
     #region Constructor
 
     public MainForm()
@@ -277,24 +291,51 @@ public partial class MainForm : Form
 
     #region Dispose
 
-    protected override void Dispose(bool disposing)
+    /// <summary>
+    /// Unsubscribe from every service event. Shared by the closing path and Dispose so the list
+    /// only exists once - the two copies had already drifted apart, and a handler left attached
+    /// keeps a closing form reachable from a background thread.
+    /// </summary>
+    private void DetachServiceEvents()
     {
-        if (disposing)
+        if (_searchManager != null)
         {
             _searchManager.StatusChanged -= OnSearchManagerStatus;
             _searchManager.SearchSourceChanged -= OnSearchSourceChanged;
             _searchManager.ProgressChanged -= OnIndexingProgress;
             _searchManager.IndexingCompleted -= OnIndexingCompleted;
             _searchManager.ScopePublished -= OnScopePublished;
-            _fileWatcher.StatusChanged -= OnWatcherStatus;
             _searchManager.CatchUpStatusChanged -= OnWatcherStatus;
+        }
+
+        if (_fileWatcher != null)
+            _fileWatcher.StatusChanged -= OnWatcherStatus;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            DetachServiceEvents();
 
             if (_notifyIcon != null) { _notifyIcon.Visible = false; _notifyIcon.Dispose(); }
             _trayContextMenu?.Dispose();
+
+            _searchCts?.Cancel();
+            _searchCts?.Dispose();
+
+            // Order matters, and it used to be wrong: the database was disposed here BEFORE the
+            // file watcher, so a batch still applying was left writing to a closed connection.
+            // Writers first, then the thing they write to.
+            //
+            // ShutdownServicesAsync has normally already stopped and awaited both by this point.
+            // These calls are what covers the paths that never reach it - Application.Exit from
+            // elsewhere, or a close that timed out - so they stay, and FileDatabase refuses late
+            // callers rather than trusting the ordering alone.
+            _fileWatcher?.Dispose();
             _searchManager?.Dispose();
             _database?.Dispose();
-            _searchCts?.Cancel(); _searchCts?.Dispose();
-            _fileWatcher?.Dispose();
+
             contextMenu?.Dispose();
 
             foreach (var icon in _iconCache.Values) icon?.Dispose();

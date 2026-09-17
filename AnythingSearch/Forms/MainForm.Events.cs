@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
+using AnythingSearch.Helper;
 using AnythingSearch.Models;
 using AnythingSearch.Services;
 
@@ -17,7 +19,17 @@ public partial class MainForm
             MinimizeToTray();
     }
 
-    private void MainForm_FormClosing(object? sender, FormClosingEventArgs e)
+    /// <summary>
+    /// Closing happens in two passes, because the background work has to be stopped before the
+    /// form is disposed - and the form's Dispose is what disposes the database.
+    ///
+    /// The first pass cancels the close, hides the window so it looks shut, and awaits the
+    /// indexing pipeline and the watcher's in-flight batch. The second pass, entered from the
+    /// Close() below, does the actual teardown. It is done this way rather than by blocking here
+    /// because the pipeline reports progress through SafeInvoke, i.e. Invoke on this thread: a
+    /// synchronous wait would deadlock against the very work it was waiting for.
+    /// </summary>
+    private async void MainForm_FormClosing(object? sender, FormClosingEventArgs e)
     {
         if (!_isExiting && _minimizeToTray)
         {
@@ -26,20 +38,19 @@ public partial class MainForm
             return;
         }
 
-        // Cleanup
-        _fileWatcher?.StopWatching();
-        _searchCts?.Cancel();
-
-        if (_searchManager != null)
+        if (!_shutdownComplete)
         {
-            _searchManager.StatusChanged -= OnSearchManagerStatus;
-            _searchManager.SearchSourceChanged -= OnSearchSourceChanged;
-            _searchManager.ProgressChanged -= OnIndexingProgress;
-            _searchManager.IndexingCompleted -= OnIndexingCompleted;
-        }
+            e.Cancel = true;
 
-        if (_fileWatcher != null)
-            _fileWatcher.StatusChanged -= OnWatcherStatus;
+            if (_shutdownStarted) return;   // already draining; ignore repeat close requests
+            _shutdownStarted = true;
+
+            await ShutdownServicesAsync();
+
+            _shutdownComplete = true;
+            Close();                        // re-enter, this time it goes through
+            return;
+        }
 
         if (_notifyIcon != null)
         {
@@ -48,6 +59,55 @@ public partial class MainForm
         }
 
         _trayContextMenu?.Dispose();
+    }
+
+    /// <summary>
+    /// Stop everything that touches the database, in dependency order, and wait for it. Runs on
+    /// the UI thread but never blocks it.
+    /// </summary>
+    private async Task ShutdownServicesAsync()
+    {
+        // Detached first: a form that is on its way out has no business receiving progress
+        // callbacks, and this removes the Invoke traffic that would otherwise keep arriving
+        // while the pipeline unwinds.
+        DetachServiceEvents();
+
+        // Look closed straight away. Draining can take a moment and a window that ignores the
+        // close button reads as a hang.
+        try
+        {
+            if (_notifyIcon != null) _notifyIcon.Visible = false;
+            Hide();
+        }
+        catch { /* cosmetic only */ }
+
+        _searchCts?.Cancel();
+
+        try
+        {
+            // One budget shared between the two waits, not one each - they run in sequence, so
+            // separate timeouts would add up and a close could sit there for twice as long.
+            var budget = Stopwatch.StartNew();
+
+            TimeSpan Remaining()
+            {
+                var left = ShutdownTimeout - budget.Elapsed;
+                return left > TimeSpan.Zero ? left : TimeSpan.Zero;
+            }
+
+            // Watcher first: it is the one still writing single entries, and stopping it leaves
+            // the pipeline as the only writer to wait for.
+            if (_fileWatcher != null)
+                await _fileWatcher.StopAsync(Remaining());
+
+            if (_searchManager != null)
+                await _searchManager.ShutdownAsync(Remaining());
+        }
+        catch (Exception ex)
+        {
+            // Never let shutdown trouble stop the app from closing.
+            Logger.Log($"Error while shutting down background services: {ex.Message}");
+        }
     }
 
     private void BtnSettings_Click(object? sender, EventArgs e)

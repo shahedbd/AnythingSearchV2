@@ -54,9 +54,32 @@ public partial class FileDatabase : IDisposable
     // are still running.
     private readonly SemaphoreSlim _gate = new(1, 1);
 
+    /// <summary>
+    /// Set by <see cref="Dispose"/> before the connection is torn down, so a caller arriving
+    /// late is refused with a clear exception instead of whatever the disposed
+    /// SqliteConnection happens to throw from somewhere deep inside a query.
+    ///
+    /// The orderly shutdown path (SearchManager.ShutdownAsync, FileWatcherService.StopAsync)
+    /// exists so nothing should ever be in flight this late. This is the backstop for the paths
+    /// that cannot be awaited - a watcher batch that overran its timeout, say - and every
+    /// caller of this type already treats a failed database operation as recoverable.
+    /// </summary>
+    private volatile bool _disposed;
+
     private async Task<IDisposable> LockAsync(CancellationToken cancellationToken = default)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+        // Re-checked after the wait: the gate may have been held by the operation that was still
+        // running when shutdown began, and the database can have been disposed while we queued.
+        if (_disposed)
+        {
+            _gate.Release();
+            throw new ObjectDisposedException(nameof(FileDatabase));
+        }
+
         return new GateReleaser(_gate);
     }
 
@@ -450,9 +473,20 @@ public partial class FileDatabase : IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
+
+        // Set first, so anything that reaches LockAsync from here on is turned away rather than
+        // being handed a connection that is about to go away underneath it.
+        _disposed = true;
+
         _insertFileCommand?.Dispose();
         _insertFolderCommand?.Dispose();
+        _selectFolderCommand?.Dispose();
         _connection?.Dispose();
-        _gate.Dispose();
+
+        // _gate is deliberately NOT disposed. SemaphoreSlim only holds an OS resource once
+        // AvailableWaitHandle has been read, which nothing here does, so disposing it buys
+        // nothing - and it would throw ObjectDisposedException into any thread still parked in
+        // WaitAsync, which is exactly the shutdown crash this guard exists to prevent.
     }
 }

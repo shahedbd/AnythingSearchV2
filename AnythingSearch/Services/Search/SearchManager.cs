@@ -236,6 +236,25 @@ public partial class SearchManager : IDisposable
         return "Search unavailable - no index yet";
     }
 
+    /// <summary>
+    /// Bring the background work to a stop and wait for it, so the caller can dispose the
+    /// database knowing nothing is still writing to it.
+    ///
+    /// Await this before <see cref="Dispose"/> on any orderly shutdown path. Dispose alone only
+    /// signals cancellation; it returns while the indexing pipeline may still be mid-commit on
+    /// the shared connection.
+    /// </summary>
+    /// <param name="timeout">Upper bound on the wait, so a wedged walk cannot block app exit.</param>
+    public async Task ShutdownAsync(TimeSpan timeout)
+    {
+        // Stops new rebuilds being scheduled. The one that may already be running reads through
+        // its own private connection, not the shared one, so it cannot be hurt by - nor hurt -
+        // the database being disposed after this returns.
+        _memorySearch.Dispose();
+
+        await _indexingService.StopAsync(timeout).ConfigureAwait(false);
+    }
+
     public void Dispose()
     {
         if (_disposed) return;

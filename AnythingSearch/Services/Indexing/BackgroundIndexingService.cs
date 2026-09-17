@@ -233,6 +233,59 @@ public partial class BackgroundIndexingService : IDisposable
         _channel?.Writer.TryComplete();
     }
 
+    /// <summary>
+    /// Cancel the pipeline and wait for it to unwind.
+    ///
+    /// <see cref="Dispose"/> cannot do this - it is synchronous, and the pipeline can be inside
+    /// <c>CommitBatchAsync</c> when it is called. Cancelling without waiting left the walker and
+    /// writer still using the shared connection while the owner disposed it, which is why closing
+    /// the app during a build could take the process down instead of exiting. Call this, await it,
+    /// and only then dispose the database.
+    /// </summary>
+    /// <param name="timeout">
+    /// How long to wait. Cancellation is checked between chunks, so a chunk that has just started
+    /// committing has to finish first; the wait is bounded so a wedged walk cannot stop the app
+    /// from closing. Progress is not lost on expiry - a chunk is only checkpointed after it
+    /// commits, so anything unrecorded is simply re-walked next launch.
+    /// </param>
+    /// <returns>True if the pipeline finished, false if the timeout expired first.</returns>
+    public async Task<bool> StopAsync(TimeSpan timeout)
+    {
+        var task = _pipelineTask;
+        if (task == null || task.IsCompleted) return true;
+
+        CancelIndexing();
+
+        // No status write here on purpose. Because this awaits the pipeline, the pipeline's own
+        // cancellation branch gets to run and records "Indexing was cancelled - progress has been
+        // saved" - or MarkCompleted, if it happened to finish on the way out. Marking it failed
+        // up front would only be overwritten, and would be wrong in the second case.
+        try
+        {
+            var completed = await Task.WhenAny(task, Task.Delay(timeout)).ConfigureAwait(false);
+
+            if (completed != task)
+            {
+                Logger.Log("Indexing shutdown timed out - the pipeline was still running.");
+                return false;
+            }
+
+            // Observe the result so a fault here is logged rather than resurfacing later as an
+            // unobserved task exception.
+            await task.ConfigureAwait(false);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger.Log($"Indexing pipeline faulted while shutting down: {ex.Message}");
+            return true;
+        }
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -240,12 +293,12 @@ public partial class BackgroundIndexingService : IDisposable
 
         if (_isIndexing)
         {
+            // Best effort only. A caller that cares about the pipeline having actually stopped
+            // before the database goes away must await StopAsync first - this cannot wait.
             _cancellationTokenSource?.Cancel();
             _channel?.Writer.TryComplete();
             _isIndexing = false;
 
-            // The state file keeps the committed checkpoints, so the next launch resumes rather
-            // than rebuilding. Only the volatile status line records the interruption.
             _status.MarkFailed("Application closed during indexing");
         }
 

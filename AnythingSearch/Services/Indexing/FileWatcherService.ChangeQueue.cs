@@ -77,7 +77,10 @@ public partial class FileWatcherService
     /// </param>
     private async Task ProcessChangesAsync(bool flushAll = false)
     {
-        if (_pendingChanges.IsEmpty) return;
+        // Refused once shutdown has begun. This is the single place a batch is claimed, so it is
+        // also the single place that has to say no - otherwise a batch could start writing to the
+        // database moments before the owner disposes it.
+        if (_stopping || _pendingChanges.IsEmpty) return;
 
         // Claim the batch atomically. The check-then-set this replaced could let the 3-second
         // timer and the high-water-mark drain both get past it, so two batches applied the same

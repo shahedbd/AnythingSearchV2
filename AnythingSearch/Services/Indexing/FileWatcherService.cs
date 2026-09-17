@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using AnythingSearch.Helper;
 using AnythingSearch.Models;
 using AnythingSearch.Database;
 using AnythingSearch.Services.Search.Memory;
@@ -28,6 +29,13 @@ public partial class FileWatcherService : IDisposable
     // 0 = idle, 1 = a batch is being applied. An int rather than a bool so the timer callback and
     // the high-water-mark drain can claim a batch with Interlocked instead of racing on a check.
     private int _processing;
+
+    /// <summary>
+    /// Set once shutdown has begun. <see cref="ProcessChangesAsync"/> is the single place a batch
+    /// is claimed, so refusing there is enough to guarantee no new batch starts touching the
+    /// database after <see cref="StopAsync"/> has been called.
+    /// </summary>
+    private volatile bool _stopping;
     private DateTime _lastProcessTime = DateTime.MinValue;
 
     // Buffer overflow protection
@@ -244,8 +252,49 @@ public partial class FileWatcherService : IDisposable
         return (_watchers.Count, _pendingChanges.Count, _isRunning);
     }
 
+    /// <summary>
+    /// Stop watching and wait for the batch currently being applied to finish.
+    ///
+    /// <see cref="StopWatching"/> on its own only stops NEW work: it kills the timer and the
+    /// watchers, but a batch already inside <see cref="ProcessChangesAsync"/> keeps writing to
+    /// the database on a thread-pool thread. The caller then disposed that database underneath
+    /// it, which is what turned closing the app mid-sync into an ObjectDisposedException on the
+    /// shared connection and its gate. Await this before disposing anything the watcher writes to.
+    /// </summary>
+    /// <param name="timeout">
+    /// How long to wait for the in-flight batch. On expiry this returns anyway - the batch is
+    /// wrapped in a transaction that either committed or did not, so abandoning it costs at most
+    /// the changes in that batch, which the next launch's catch-up pass picks up. Hanging on exit
+    /// would be the worse outcome.
+    /// </param>
+    /// <returns>True if the in-flight batch completed, false if the timeout expired first.</returns>
+    public async Task<bool> StopAsync(TimeSpan timeout)
+    {
+        _stopping = true;
+        StopWatching();
+
+        // Polled rather than awaited on a stored Task: a batch is started from two places
+        // (the interval timer and the high-water-mark drain) and _processing is the one flag
+        // both of them go through, so it is the only thing that cannot miss a batch.
+        var deadline = DateTime.UtcNow + timeout;
+
+        while (Volatile.Read(ref _processing) != 0)
+        {
+            if (DateTime.UtcNow >= deadline)
+            {
+                Logger.Log("File watcher shutdown timed out with a change batch still applying.");
+                return false;
+            }
+
+            await Task.Delay(25).ConfigureAwait(false);
+        }
+
+        return true;
+    }
+
     public void Dispose()
     {
+        _stopping = true;
         StopWatching();
         _processTimer?.Dispose();
     }
