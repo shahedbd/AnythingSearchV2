@@ -1,9 +1,8 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
-    <!-- <TargetFramework>net8.0-windows</TargetFramework> -->
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -19,10 +18,11 @@
     <Copyright>© 2025 Zero Byte Software Solutions</Copyright>
     <PackageProjectUrl>https://zerobytebd.com/anything-search</PackageProjectUrl>
 
-    <!-- Version - Updated for DPI fix -->
-    <Version>1.0.1.0</Version>
-    <FileVersion>1.0.1.0</FileVersion>
-    <AssemblyVersion>1.0.1.0</AssemblyVersion>
+    <!-- Version - keep in step with Helper\AppConfig.AppVersion and with
+         WinAppPakaging\Package.appxmanifest -->
+    <Version>2.0.0.0</Version>
+    <FileVersion>2.0.0.0</FileVersion>
+    <AssemblyVersion>2.0.0.0</AssemblyVersion>
 
     <!-- CRITICAL: High DPI Support for Microsoft Store (150% scaling fix) -->
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
@@ -30,10 +30,120 @@
     <FormsHighDpiMode>PerMonitorV2</FormsHighDpiMode>
     <EnableWindowsFormsHighDpiAutoResizing>true</EnableWindowsFormsHighDpiAutoResizing>
 
-    <!-- Windows Settings -->
+    <!-- Windows Settings. AnyCPU only: the wapproj packages this as a neutral
+         bundle and the .sln maps every solution platform of this project to
+         Any CPU, so an x64/ARM64 project platform would only ever be reached by
+         accident - and would then contradict the RuntimeIdentifier below. -->
     <WindowsPackageType>None</WindowsPackageType>
-    <Platforms>AnyCPU;x64;ARM64</Platforms>
+    <Platforms>AnyCPU</Platforms>
+
+    <!-- A RID is mandatory for trimming, and is stated unconditionally on
+         purpose: restore has to see it or a Release build after a Debug restore
+         fails with NETSDK1047.
+
+         win-x64, not win-x86 as in the sibling NetSpeedMeterPlus repo. This app
+         holds the whole file index in memory (Services\Search\Memory), which on
+         a large drive is hundreds of MB of packed arrays - a 32-bit address
+         space is the wrong risk to take for ~1 MB of package size. The
+         framework-dependent AnyCPU builds that shipped before this change also
+         ran 64-bit on every 64-bit Windows, so this keeps the shape users
+         already have. Cost: the neutral bundle now needs x64 emulation on ARM64
+         (Windows 11 has it; ARM64 Windows 10 does not). -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+
+    <!-- Locale data stays in - search results show file dates and sizes
+         formatted per user locale, so InvariantGlobalization is not an option
+         for shaving size here. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <!-- Safer for WinForms -->
+    <_SuppressWinFormsTrimError>true</_SuppressWinFormsTrimError>
   </PropertyGroup>
+
+  <!-- Deployment shape for the shipping build. Scoped to Release (all
+       platforms) because SelfContained copies the whole runtime into the output
+       folder on every build - leaving it on for Debug would put ~120 MB in bin
+       and slow the F5 loop for no benefit. -->
+  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+    <!-- Self-contained, stated explicitly. There is no Store framework package
+         for the .NET Desktop Runtime, so MSIX must carry the runtime or the app
+         fails to launch on machines that do not happen to have it. Trimming
+         also requires it. -->
+    <SelfContained>true</SelfContained>
+
+    <!-- Loose files, not a single-file bundle. MSIX already packs and
+         compresses, so single-file buys nothing here and costs twice: it
+         extracts on every launch, and one opaque blob defeats MSIX differential
+         updates - users re-download the whole runtime for a one-line fix. -->
+    <PublishSingleFile>false</PublishSingleFile>
+
+    <!-- Trim the runtime, not our code. TrimMode=partial trims only assemblies
+         marked IsTrimmable - the .NET framework ones, which are the entire
+         ~120 MB problem - and leaves AnythingSearch.dll, Microsoft.Data.Sqlite
+         and the SQLitePCLRaw assemblies with every member intact. That is what
+         keeps the reflection paths safe: System.Text.Json round-trips our own
+         model types (SettingsService, DatabaseStatus, IndexingState,
+         RecentSearchService) with no source generator, and SQLitePCLRaw picks
+         its native provider through SQLitePCL.Batteries.Init() in
+         Database\FileDatabase.cs. Do NOT switch this to full without
+         re-testing those. -->
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
+
+    <!-- PublishTrimmed silently flips ~20 runtime feature switches off (they
+         land in AnythingSearch.runtimeconfig.json, on build, not just on
+         publish). Three of them break this app, so turn them back on:
+
+         JsonSerializer.IsReflectionEnabledByDefault=false makes every
+         JsonSerializer call throw "Reflection-based serialization has been
+         disabled" - that is SettingsService, DatabaseStatus, IndexingState and
+         RecentSearchService, i.e. settings, index state and recent searches
+         never load or save. TrimMode=partial leaves AnythingSearch.dll
+         untrimmed, so those model types keep every member and reflection-based
+         serialization is safe here.
+
+         BuiltInComInterop.IsSupported=false takes out every WMI query -
+         System.Management is COM underneath, so DeviceInfoCollector and
+         HardwareIdentifierUUID both depend on it - plus the shell-based folder
+         pickers and the clipboard used from the results list.
+
+         ResourceManager.AllowCustomResourceTypes=false throws out of
+         InitializeComponent on the first GetObject call. "Custom type" here
+         means anything that is not a primitive or string, so it covers the
+         typed entries in Forms\MainForm.resx, AboutForm.resx and
+         SettingsForm.resx (System.Drawing.Icon, stored as bytearray.base64).
+
+         The rest stay off deliberately: this app uses no data binding, no
+         ActiveX/WebBrowser, no DataSet and no TypeDescriptor
+         (Properties\Settings is generated but nothing reads it - settings go
+         through Services\SettingsService). UseSystemResourceKeys stays false so
+         exception messages remain readable in the logs. -->
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <CustomResourceTypesSupport>true</CustomResourceTypesSupport>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WMI binds property values reflectively at runtime, so the trimmer
+         cannot see what these queries touch: Win32_Processor and
+         Win32_ComputerSystem (DeviceInfoCollector) and
+         Win32_ComputerSystemProduct (HardwareIdentifierUUID).
+         System.Management is marked trimmable, so root the whole assembly
+         rather than ship a build where those silently return null. Costs a few
+         hundred KB. -->
+    <TrimmerRootAssembly Include="System.Management" />
+
+    <!-- The resx files name their reader as a STRING inside the compiled
+         .resources blob ("System.Resources.Extensions.DeserializingResourceReader,
+         System.Resources.Extensions, Version=4.0.0.0, ..."), so the trimmer
+         sees no reference and drops the assembly. The app then dies on the
+         first resx icon read with "Could not load file or assembly
+         'System.Resources.Extensions'". Same root cause as
+         CustomResourceTypesSupport above: both are that one dependency. A dev
+         build never shows this, because it is untrimmed and ships
+         everything. -->
+    <TrimmerRootAssembly Include="System.Resources.Extensions" />
+  </ItemGroup>
 
   <!-- Manifest file for DPI awareness -->
   <ItemGroup>
@@ -82,10 +192,6 @@
   <ItemGroup>
     <!-- Lets AnythingSearch.Tests drive the index catch-up pass for a single directory -->
     <InternalsVisibleTo Include="AnythingSearch.Tests" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Services\Startup\" />
   </ItemGroup>
 
 </Project>

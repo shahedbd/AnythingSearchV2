@@ -9,6 +9,35 @@ C:\Users\Public\src\MS_Store_App\AnythingSearch\Doc\Requirements
 - Preserve existing behavior unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
+Now review and update:
+G:\src\MS_Store_App\AnythingSearchV2\AnythingSearch\AnythingSearch.csproj
+G:\src\MS_Store_App\AnythingSearchV2\WinAppPakaging\WinAppPakaging.wapproj
+
+By following project pattern:
+G:\src\MS_Store_App\NetSpeedMeterPlus\NetSpeedMeterPlus\NetSpeedMeterPlus.csproj
+G:\src\MS_Store_App\NetSpeedMeterPlus\PackagingLIB\PackagingLIB.wapproj
+
+
+Target is to package size around 20 MB. We applied some rules in NetSpeedMeterPlus.
+
+
+Copy and update : G:\src\MS_Store_App\NetSpeedMeterPlus\build-store-package_NSM_Plus.cmd, for AnythingSearchV2 project.
+
+
+
+
+- Keep files small: Target ≤300 lines; 400 lines absolute maximum. Split large files into focused modules.
+- Skip build, test, publish, deployment, migration, and package commands unless explicitly requested; I will handle them.
+- Optimize token usage: inspect only relevant files and make the smallest necessary changes.
+- Follow the existing architecture, documentation, patterns, naming conventions, and coding style.
+- Reuse existing code and dependencies; avoid unnecessary refactoring or new dependencies.
+- Preserve existing behavior unless the task requires otherwise.
+- Keep responses concise and report only important changes, affected files, and caveats.
+
+
+
+
+
 Services/SettingsService.cs now migrates the legacy file once, when appsettings.json is absent. The write-forward happens in the Current getter after _current is assigned — doing it inside Load() would have been a second stack overflow, since Save() serializes Current.
 -remove legacy migration, as we have a major release plan, so we will create a new app director.
 -cause we did a lot of refatoring, so database might not work.
@@ -33,25 +62,6 @@ Once full indexing and creation done, delete it: AnythingSearch
 - Keep responses concise and report only important changes, affected files, and caveats.
 
 
-
-
-
-Now review and update:
-G:\src\MS_Store_App\AnythingSearchV2\AnythingSearch\AnythingSearch.csproj
-
-
-By following project pattern:
-G:\src\MS_Store_App\NetSpeedMeterPlus\NetSpeedMeterPlus\NetSpeedMeterPlus.csproj
-
-Target is to package size around 20 MB. We applied some rules in NetSpeedMeterPlus.
-
-- Keep files small: Target ≤300 lines; 400 lines absolute maximum. Split large files into focused modules.
-- Skip build, test, publish, deployment, migration, and package commands unless explicitly requested; I will handle them.
-- Optimize token usage: inspect only relevant files and make the smallest necessary changes.
-- Follow the existing architecture, documentation, patterns, naming conventions, and coding style.
-- Reuse existing code and dependencies; avoid unnecessary refactoring or new dependencies.
-- Preserve existing behavior unless the task requires otherwise.
-- Keep responses concise and report only important changes, affected files, and caveats.
 
 
 

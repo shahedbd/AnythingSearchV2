@@ -1,9 +1,13 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Condition="'$(VisualStudioVersion)' == '' or '$(VisualStudioVersion)' &lt; '15.0'">
     <VisualStudioVersion>15.0</VisualStudioVersion>
   </PropertyGroup>
   <PropertyGroup>
+    <!-- The app project is AnyCPU with RuntimeIdentifier win-x64, so its native
+         SQLite dependency (e_sqlite3.dll) resolves as x64 while this packaging
+         project builds as AnyCPU/neutral. That pairing is intentional - see
+         AnythingSearch.csproj - and the mismatch warning is noise here. -->
     <ResolveAssemblyWarnOrErrorOnTargetArchitectureMismatch>None</ResolveAssemblyWarnOrErrorOnTargetArchitectureMismatch>
   </PropertyGroup>
   <ItemGroup Label="ProjectConfigurations">
@@ -55,7 +59,11 @@
   <PropertyGroup>
     <ProjectGuid>48435233-8ecd-4374-9e5e-c402370b1551</ProjectGuid>
     <TargetPlatformVersion>10.0.19041.0</TargetPlatformVersion>
-    <TargetPlatformMinVersion>10.0.17134.0</TargetPlatformMinVersion>
+    <!-- Must match TargetDeviceFamily MinVersion in Package.appxmanifest, which
+         is 10.0.17763.0 (1809). This was 10.0.17134.0, so the two disagreed:
+         the packaged bundle claimed support for a build the manifest refuses to
+         install on. 1809 is also the floor the app's DPI story assumes. -->
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <DefaultLanguage>en-US</DefaultLanguage>
     <AppxPackageSigningEnabled>True</AppxPackageSigningEnabled>
     <NoWarn>$(NoWarn);NU1702</NoWarn>
@@ -63,8 +71,12 @@
     <AppxAutoIncrementPackageRevision>False</AppxAutoIncrementPackageRevision>
     <GenerateTestArtifacts>True</GenerateTestArtifacts>
     <AppxBundlePlatforms>neutral</AppxBundlePlatforms>
-    <GenerateTemporaryStoreCertificate>True</GenerateTemporaryStoreCertificate>
     <HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
+    <!-- CN=8545CA03-A40F-42F8-9E80-790ABC2452FC, installed in CurrentUser\My and
+         valid to 2027-07-25. GenerateTemporaryStoreCertificate was removed
+         alongside this: with both set, a signing pass can pick up a freshly
+         generated temporary certificate instead of this one, and the resulting
+         bundle then will not install over an existing sideloaded copy. -->
     <PackageCertificateThumbprint>006FFCEF76A19BC4D1480942D8EE8A8A1ECD5278</PackageCertificateThumbprint>
     <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
     <EntryPointProjectUniqueName>..\AnythingSearch\AnythingSearch.csproj</EntryPointProjectUniqueName>
