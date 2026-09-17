@@ -42,7 +42,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="Resources\favicon.ico" />
+    <Content Include="Resources\favicon.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
@@ -64,6 +66,9 @@
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
     </None>
+    <None Update="Resources\180x180.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="Resources\favicon.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -76,6 +81,10 @@
   <ItemGroup>
     <!-- Lets AnythingSearch.Tests drive the index catch-up pass for a single directory -->
     <InternalsVisibleTo Include="AnythingSearch.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Services\Startup\" />
   </ItemGroup>
 
 </Project>

@@ -1,6 +1,7 @@
 using AnythingSearch.Database;
-using AnythingSearch.Services;
 using AnythingSearch.Models;
+using AnythingSearch.Services;
+using DeviceDataModule;
 using System.Collections.Concurrent;
 
 namespace AnythingSearch.Forms;
@@ -148,7 +149,7 @@ public partial class MainForm : Form
             // Update tray status
             UpdateTrayStatus(_searchManager.GetStatusMessage());
 
-            await StartupService.ExecuteStartupTaskAsync();
+            _ = Task.Run(() => AppStartupService.ExecuteStartupTaskAsync());
         }
         catch (Exception ex)
         {

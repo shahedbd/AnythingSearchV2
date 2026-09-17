@@ -89,4 +89,15 @@ public class AppSettings
     /// Minimize to system tray instead of closing
     /// </summary>
     public bool MinimizeToTray { get; set; } = true;
+
+
+    // ── Installation / telemetry ─────────────────────────────────────
+    public int AppVersion { get; set; } = 0;
+    public int LaunchCount { get; set; } = 0;
+    public string LastAppVersion { get; set; } = string.Empty;
+    public DateTime? LastUpdateDate { get; set; } = null;
+    public DateTime? LastPromotionDate { get; set; } = null;
+    public int PromotionCount { get; set; }
+    public bool IsNewInstallation { get; set; } = true;
+    public DateTime AppStartTime { get; set; } = new(2023, 8, 5, 21, 33, 0);
 }
