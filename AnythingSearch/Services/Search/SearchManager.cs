@@ -1,5 +1,6 @@
-using AnythingSearch.Models;
 using AnythingSearch.Database;
+using AnythingSearch.Helper;
+using AnythingSearch.Models;
 using AnythingSearch.Services.Search.Memory;
 
 namespace AnythingSearch.Services;
@@ -82,12 +83,10 @@ public partial class SearchManager : IDisposable
     /// </summary>
     public bool IsIndexing => _indexingService.IsIndexing;
 
-    public SearchManager(
-        FileDatabase database,
-        SettingsManager settingsManager)
+    public SearchManager(FileDatabase database)
     {
         _database = database;
-        _indexingService = new BackgroundIndexingService(database, settingsManager);
+        _indexingService = new BackgroundIndexingService(database);
         _memorySearch = new MemorySearchService(database.DatabasePath);
         _database.MaintenanceStatusChanged += status => StatusChanged?.Invoke(status);
         _memorySearch.StatusChanged += status => StatusChanged?.Invoke(status);
@@ -157,7 +156,7 @@ public partial class SearchManager : IDisposable
         catch (Exception ex)
         {
             // Upkeep is best-effort: a failure here must never stop the app from searching.
-            System.Diagnostics.Debug.WriteLine($"[SearchManager] Startup maintenance skipped: {ex.Message}");
+            Logger.Log($"Startup database maintenance skipped: {ex.Message}");
         }
     }
 

@@ -53,10 +53,6 @@ internal sealed partial class IndexPlanner
     /// </summary>
     private const int MaxUnitsPerScope = 2_000;
 
-    private readonly SettingsManager _settingsManager;
-
-    public IndexPlanner(SettingsManager settingsManager) => _settingsManager = settingsManager;
-
     /// <summary>The drive Windows is installed on, e.g. "C:\".</summary>
     public static string OsDrive =>
         Path.GetPathRoot(Environment.SystemDirectory) ?? "C:\\";
@@ -80,7 +76,7 @@ internal sealed partial class IndexPlanner
             scopes.Add(new($"drive:{drive.Name}", IndexPhase.DataDrives, drive.Name, $"Drive {drive.Name}"));
         }
 
-        if (_settingsManager.Settings.IndexSystemDrive)
+        if (SettingsService.Current.IndexSystemDrive)
             scopes.AddRange(BuildSystemDriveScopes(osDrive));
 
         return scopes;
@@ -269,7 +265,7 @@ internal sealed partial class IndexPlanner
 
     public bool IsExcluded(string path)
     {
-        foreach (var excluded in _settingsManager.Settings.ExcludedFolders)
+        foreach (var excluded in SettingsService.Current.ExcludedFolders)
         {
             if (path.Contains($"\\{excluded}\\", StringComparison.OrdinalIgnoreCase) ||
                 path.EndsWith($"\\{excluded}", StringComparison.OrdinalIgnoreCase))
@@ -282,7 +278,7 @@ internal sealed partial class IndexPlanner
     {
         if (string.IsNullOrEmpty(extension)) return false;
         var ext = extension.TrimStart('.').ToLowerInvariant();
-        return _settingsManager.Settings.ExcludedExtensions.Contains(ext);
+        return SettingsService.Current.ExcludedExtensions.Contains(ext);
     }
 
     /// <summary>

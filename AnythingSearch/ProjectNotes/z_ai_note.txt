@@ -9,6 +9,15 @@ C:\Users\Public\src\MS_Store_App\AnythingSearch\Doc\Requirements
 - Preserve existing behavior unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
+App is not running, get this error in codebase:
+System.StackOverflowException: 'Exception of type 'System.StackOverflowException' was thrown.'
+
+
+Fix and make app fully up and running.
+
+
+
+
 Improve and use it entire project: /Helper/AppConfig
 Remove: /Services/SettingsManager and use it: /Services/SettingsService
 Use logger: /Helper/Logger

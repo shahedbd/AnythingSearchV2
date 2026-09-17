@@ -24,7 +24,7 @@ public partial class MainForm
         int minWidth = 950;
         int minHeight = 600;
 
-        this.Text = "Anything Search";
+        this.Text = AppConfig.AppName;
         this.Size = new Size((int)(baseWidth * dpiScale), (int)(baseHeight * dpiScale));
         this.StartPosition = FormStartPosition.CenterScreen;
         this.MinimumSize = new Size((int)(minWidth * dpiScale), (int)(minHeight * dpiScale));

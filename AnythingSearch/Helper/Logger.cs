@@ -5,12 +5,14 @@ namespace AnythingSearch.Helper
     /// <summary>
     /// The app's file log: %LocalAppData%\…\Logs\app_log.txt.
     ///
-    /// Written from the UI thread, the speed tick, the DataUsageMonitor timer
-    /// and the startup task, in a process that runs for days — so every append
-    /// takes a lock (concurrent appends used to throw IOException straight into
-    /// an empty catch, losing the entries that mattered most) and the file is
-    /// rolled at <see cref="MaxBytes"/> instead of growing without end.
-    /// See Doc/Bug_report/v5.0.4.0_QA_Full_Test_Report.md, M-22.
+    /// Written from the UI thread, the indexing pipeline's walker and writer threads, the file
+    /// watcher's timer and the startup task, in a process that can sit in the tray for days — so
+    /// every append takes a lock (concurrent appends used to throw IOException straight into an
+    /// empty catch, losing the entries that mattered most) and the file is rolled at
+    /// <see cref="MaxBytes"/> instead of growing without end.
+    ///
+    /// Use this rather than Debug.WriteLine: Debug output is compiled out of a Release build, so
+    /// anything logged that way is invisible in the one place it matters, a user's support report.
     /// </summary>
     public static class Logger
     {
@@ -22,10 +24,20 @@ namespace AnythingSearch.Helper
 
         private static readonly object Gate = new();
 
-        private static readonly string LogDirectory = ApplicationDataManager.Instance.LogsDirectory;
-        private static readonly string LogPath = Path.Combine(LogDirectory, "app_log.txt");
+        /// <summary>
+        /// Resolved on first write, not at type load. ApplicationDataManager logs through this
+        /// class while it is bootstrapping, and asking it for a directory from a static field
+        /// initializer made the two types initialize each other - which its Lazy instance
+        /// rejects. A failed attempt leaves this null, so the next write simply tries again.
+        /// </summary>
+        private static string? _logDirectory;
 
-        static Logger() => PurgeLegacyFiles();
+        private static bool _purged;
+
+        private static string LogDirectory =>
+            _logDirectory ??= ApplicationDataManager.Instance.LogsDirectory;
+
+        private static string LogPath => Path.Combine(LogDirectory, "app_log.txt");
 
         // ─────────────────────────────────────────────────────────────────────
         // WRITE
@@ -52,6 +64,12 @@ namespace AnythingSearch.Helper
                 // this app needs — it runs single-instance.
                 lock (Gate)
                 {
+                    if (!_purged)
+                    {
+                        _purged = true;
+                        PurgeLegacyFiles();
+                    }
+
                     RollIfOversized();
                     File.AppendAllText(LogPath, entry);
                 }
@@ -103,8 +121,8 @@ namespace AnythingSearch.Helper
         /// stale the moment this build runs, and left in place they send anyone
         /// triaging a support report down the wrong file.
         ///
-        /// Runs once per process, not once per install: re-checking costs a
-        /// File.Exists on start-up and needs no upgrade flag to be kept in sync.
+        /// Runs once per process on the first write, not once per install: re-checking costs
+        /// a File.Exists on start-up and needs no upgrade flag to be kept in sync.
         /// </summary>
         private static void PurgeLegacyFiles()
         {

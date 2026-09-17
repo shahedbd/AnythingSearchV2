@@ -9,11 +9,30 @@ namespace AnythingSearch.Helper
     public static class AppConfig
     {
         public static string AppName = "Anything Search";
-        public static string AppDescription = "TBD";
-        public static string AppSubtitle = "TBD";
+        public static string AppDescription =
+            "Anything Search lets you instantly locate files and folders on Windows using a " +
+            "lightning-fast indexed search engine.";
+        public static string AppSubtitle = "Lightning-Fast File Search Utility";
         public static string AppVersion = "Version 2.0.0.0";
         public static int AppReleaseVersion = 2000;
+
+        /// <summary>
+        /// Folder under %LocalAppData% holding the index database, the indexing state file,
+        /// settings, recent searches and logs. Everything reaches it through
+        /// ApplicationDataManager rather than composing the path itself, so the fallback chain
+        /// that keeps 1M+ installs writable applies to all of them.
+        /// </summary>
         public static string AppDataFolderName = "AnythingSearch";
+
+        /// <summary>Product page, linked from the About dialog.</summary>
+        public static string ProductPageUrl = "https://zerobytebd.com/anything-search";
+
+        /// <summary>
+        /// Value name under HKCU\...\Run for "start with Windows". Kept separate from
+        /// <see cref="AppName"/>: renaming it would orphan the entry of every existing install
+        /// and the app would silently stop starting with Windows.
+        /// </summary>
+        public static string StartupRegistryValueName = "AnythingSearch";
 
         public static Color PrimaryColor = Color.FromArgb(48, 151, 202); // #3097CA
         public static string AppIconPath => Path.Combine(Application.StartupPath, "Resources", "180x180.png");
@@ -62,6 +81,9 @@ namespace AnythingSearch.Helper
         // live in UserControls/About/AboutContent.cs, which builds its tab rows
         // from NavItems below — edit them there, not here.
         public static string DeveloperName = "Zero Byte Software Solutions, zerobytebd.com";
+
+        /// <summary>The company name on its own, without the website suffix DeveloperName carries.</summary>
+        public static string CompanyName = "Zero Byte Software Solutions";
         public static string WebsiteUrl = "https://zerobytebd.com";
         public static string SupportEmail = "shahedbddev@gmail.com";
         public const string Copyright = "© 2026 Zero Byte Software Solutions. All rights reserved.";

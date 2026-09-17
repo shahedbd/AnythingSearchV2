@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 
 namespace AnythingSearch.Helper
 {
@@ -38,7 +38,7 @@ namespace AnythingSearch.Helper
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to load icon: {ex.Message}");
+                Logger.Log($"Failed to load the application icon: {ex.Message}");
             }
 
             // Fallback to system icon

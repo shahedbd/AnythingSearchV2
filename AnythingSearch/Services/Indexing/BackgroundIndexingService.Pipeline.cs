@@ -161,7 +161,7 @@ public partial class BackgroundIndexingService
         var alreadyDone = new HashSet<string>(scopeState.CompletedUnits, StringComparer.OrdinalIgnoreCase);
         var units = _planner.ExpandUnits(scope).Where(u => !alreadyDone.Contains(u.Key)).ToList();
         var skipDirectories = SkipDirectoriesFor(scope);
-        var chunkSize = Math.Max(1, _settingsManager.Settings.MaxIndexingThreads);
+        var chunkSize = Math.Max(1, SettingsService.Current.MaxIndexingThreads);
 
         var segmentThreshold = SegmentThreshold;
 

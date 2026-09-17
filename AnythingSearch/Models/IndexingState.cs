@@ -1,3 +1,5 @@
+using AnythingSearch.Helper;
+using DeviceDataModule;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -100,8 +102,7 @@ public class IndexScopeState
 public class IndexingState
 {
     private static readonly string DefaultPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "AnythingSearch",
+        ApplicationDataManager.Instance.ApplicationDataDirectory,
         "indexing_state.json");
 
     /// <summary>Where this instance persists to. Private, so it is never serialized.</summary>
@@ -156,7 +157,7 @@ public class IndexingState
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[IndexingState] Load failed: {ex.Message}");
+            Logger.Log($"Failed to load the indexing state file - starting a fresh plan: {ex.Message}");
         }
 
         return new IndexingState { _filePath = path };
@@ -177,7 +178,7 @@ public class IndexingState
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[IndexingState] Save failed: {ex.Message}");
+            Logger.Log($"Failed to save the indexing state file - progress may be re-indexed: {ex.Message}");
         }
     }
 

@@ -41,13 +41,13 @@ public class IndexCatchUpTests : IAsyncLifetime
         _database = new FileDatabase(_dbPath);
         await _database.InitializeAsync();
 
-        var settings = new SettingsManager();
-        // Deterministic, in-memory only (never saved). The default list excludes
-        // "AppData\Local\Temp", which is exactly where the test tree lives.
-        settings.Settings.ExcludedFolders.Clear();
-        settings.Settings.ExcludedExtensions.Clear();
+        // Deterministic, in-memory only (never saved - SettingsService.Save() is not called).
+        // The default list excludes "AppData\Local\Temp", which is exactly where the test
+        // tree lives.
+        SettingsService.Current.ExcludedFolders.Clear();
+        SettingsService.Current.ExcludedExtensions.Clear();
 
-        _indexing = new BackgroundIndexingService(_database, settings, _statusPath);
+        _indexing = new BackgroundIndexingService(_database, _statusPath);
 
         await SeedIndexWithoutDocFolderAsync();
     }

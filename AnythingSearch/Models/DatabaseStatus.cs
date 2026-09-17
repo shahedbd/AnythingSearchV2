@@ -1,3 +1,5 @@
+using AnythingSearch.Helper;
+using DeviceDataModule;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -10,8 +12,7 @@ namespace AnythingSearch.Models;
 public class DatabaseStatus
 {
     private static readonly string StatusFilePath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "AnythingSearch",
+        ApplicationDataManager.Instance.ApplicationDataDirectory,
         "database_status.json");
 
     /// <summary>
@@ -104,23 +105,18 @@ public class DatabaseStatus
 
         try
         {
-            System.Diagnostics.Debug.WriteLine($"[DatabaseStatus] Loading from: {path}");
-
             if (File.Exists(path))
             {
-                var json = File.ReadAllText(path);
-                System.Diagnostics.Debug.WriteLine($"[DatabaseStatus] JSON content: {json}");
-
-                var status = JsonSerializer.Deserialize<DatabaseStatus>(json);
+                var status = JsonSerializer.Deserialize<DatabaseStatus>(File.ReadAllText(path));
                 if (status != null)
                 {
                     status._filePath = path;
-                    System.Diagnostics.Debug.WriteLine($"[DatabaseStatus] Loaded state: {status.State}, TotalItems: {status.TotalItems}");
 
                     // If app crashed during indexing, mark as failed
                     if (status.State == DatabaseState.Indexing)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[DatabaseStatus] Previous indexing was interrupted, marking as failed");
+                        Logger.Log("Previous indexing run was interrupted - the indexing state " +
+                                   "file still holds its checkpoints, so it will resume.");
                         status.State = DatabaseState.Failed;
                         status.ErrorMessage = "Indexing was interrupted (application closed unexpectedly)";
                         status.Save();
@@ -128,14 +124,10 @@ public class DatabaseStatus
                     return status;
                 }
             }
-            else
-            {
-                System.Diagnostics.Debug.WriteLine($"[DatabaseStatus] Status file does not exist, returning new status");
-            }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[DatabaseStatus] Failed to load: {ex.Message}");
+            Logger.Log($"Failed to load the database status file: {ex.Message}");
         }
 
         return new DatabaseStatus { _filePath = path };
@@ -162,7 +154,7 @@ public class DatabaseStatus
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Failed to save database status: {ex.Message}");
+            Logger.Log($"Failed to save the database status file: {ex.Message}");
         }
     }
 
@@ -234,9 +226,8 @@ public class DatabaseStatus
         CurrentPath = string.Empty;
         ErrorMessage = null;
 
-        System.Diagnostics.Debug.WriteLine($"[DatabaseStatus] Marking as READY - Files: {totalFiles}, Folders: {totalFolders}");
+        Logger.Log($"Index ready - {totalFiles:N0} files, {totalFolders:N0} folders.");
         Save();
-        System.Diagnostics.Debug.WriteLine($"[DatabaseStatus] Status saved to: {StatusFilePath}");
     }
 
 

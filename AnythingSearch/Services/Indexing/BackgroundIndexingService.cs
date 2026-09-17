@@ -1,7 +1,8 @@
 using System.Diagnostics;
 using System.Threading.Channels;
-using AnythingSearch.Models;
 using AnythingSearch.Database;
+using AnythingSearch.Helper;
+using AnythingSearch.Models;
 
 namespace AnythingSearch.Services;
 
@@ -21,7 +22,8 @@ namespace AnythingSearch.Services;
 /// Throughput is deliberately bounded rather than maximal. The previous version ran one walker
 /// per CPU core across hundreds of directories on all drives at once, which pinned the disk at
 /// 100% and starved the UI. Here one scope runs at a time, with a small number of concurrent
-/// walkers and a throttle pause between batches (see <see cref="AppSettings.MaxIndexingThreads"/>).
+/// walkers and a throttle pause between batches (see <see cref="AppSettings.MaxIndexingThreads"/>,
+/// read through <see cref="SettingsService"/>).
 ///
 /// Split into partial classes: this file owns the lifecycle and public API,
 /// BackgroundIndexingService.Pipeline.cs the phase/scope/checkpoint loop,
@@ -32,7 +34,6 @@ namespace AnythingSearch.Services;
 public partial class BackgroundIndexingService : IDisposable
 {
     private readonly FileDatabase _database;
-    private readonly SettingsManager _settingsManager;
     private readonly IndexPlanner _planner;
     private readonly DatabaseStatus _status;
     private readonly IndexingState _state;
@@ -102,13 +103,11 @@ public partial class BackgroundIndexingService : IDisposable
     /// </param>
     public BackgroundIndexingService(
         FileDatabase database,
-        SettingsManager settingsManager,
         string? statusFilePathOverride = null,
         string? stateFilePathOverride = null)
     {
         _database = database;
-        _settingsManager = settingsManager;
-        _planner = new IndexPlanner(settingsManager);
+        _planner = new IndexPlanner();
         _status = DatabaseStatus.Load(statusFilePathOverride);
         _state = IndexingState.Load(stateFilePathOverride
             ?? (statusFilePathOverride == null ? null : statusFilePathOverride + ".state.json"));
@@ -143,7 +142,7 @@ public partial class BackgroundIndexingService : IDisposable
             if (!_status.IsReady)
                 _status.MarkCompleted(_state.TotalFiles, _state.TotalFolders);
 
-            Debug.WriteLine($"[Indexing] Index complete with {count:N0} items - nothing to do.");
+            Logger.Log($"Index already complete with {count:N0} items - nothing to do.");
             DatabaseReady?.Invoke();
             return;
         }
@@ -156,8 +155,8 @@ public partial class BackgroundIndexingService : IDisposable
             DatabaseReady?.Invoke();
         }
 
-        Debug.WriteLine($"[Indexing] Resuming - {_state.Scopes.Count(s => s.Status == IndexScopeStatus.Completed)} " +
-                        $"of {_state.Scopes.Count} scopes already done.");
+        Logger.Log($"Resuming indexing - {_state.Scopes.Count(s => s.Status == IndexScopeStatus.Completed)} " +
+                   $"of {_state.Scopes.Count} scopes already done.");
         StartPipeline(fullRebuild: false);
     }
 

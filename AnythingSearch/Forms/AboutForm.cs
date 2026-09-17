@@ -1,4 +1,4 @@
-﻿using AnythingSearch.Database;
+using AnythingSearch.Database;
 using AnythingSearch.Helper;
 using System.Diagnostics;
 using System.Reflection;
@@ -7,12 +7,13 @@ namespace AnythingSearch.Forms;
 
 public partial class AboutForm : Form
 {
-    // Production Release Information
-    private const string AppName = "Anything Search";
-    private const string AppWebsite = "https://zerobytebd.com/anything-search";
-    private const string AppEmail = "shahedbddev@gmail.com";
-    private const string DeveloperName = "Zero Byte Software Solutions";
-    private const string AppTagline = "Lightning-Fast File Search Utility";
+    // Production Release Information - all of it from Helper/AppConfig, so the About
+    // dialog, the window title and the tray text can never drift apart.
+    private static readonly string AppName = AppConfig.AppName;
+    private static readonly string AppWebsite = AppConfig.ProductPageUrl;
+    private static readonly string AppEmail = AppConfig.SupportEmail;
+    private static readonly string AppTagline = AppConfig.AppSubtitle;
+    private static readonly string DeveloperName = AppConfig.CompanyName;
 
     // Colors
     private static readonly Color PrimaryColor = Color.FromArgb(0, 120, 212);
@@ -286,7 +287,7 @@ public partial class AboutForm : Form
         // Copyright
         Label lblCopyright = new Label
         {
-            Text = $"© {DateTime.Now.Year} {DeveloperName}. All rights reserved.",
+            Text = AppConfig.Copyright,
             Font = new Font("Segoe UI", 8),
             ForeColor = TextMuted,
             AutoSize = true,

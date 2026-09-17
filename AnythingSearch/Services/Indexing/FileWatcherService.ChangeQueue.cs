@@ -177,7 +177,7 @@ public partial class FileWatcherService
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"FileWatcher error ({change.Path}): {ex.Message}");
+                    Helper.Logger.Log($"File watcher could not apply a change to {change.Path}: {ex.Message}");
                     errors++;
                 }
             }

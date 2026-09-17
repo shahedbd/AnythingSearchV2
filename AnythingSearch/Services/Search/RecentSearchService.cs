@@ -1,4 +1,6 @@
-﻿using System.Text.Json;
+using AnythingSearch.Helper;
+using DeviceDataModule;
+using System.Text.Json;
 
 namespace AnythingSearch.Services;
 
@@ -11,12 +13,8 @@ public class RecentSearchService
 
     public RecentSearchService()
     {
-        var appDataPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "AnythingSearch");
-
-        Directory.CreateDirectory(appDataPath);
-        _recentSearchesFile = Path.Combine(appDataPath, "recent_searches.json");
+        _recentSearchesFile = Path.Combine(
+            ApplicationDataManager.Instance.ApplicationDataDirectory, "recent_searches.json");
 
         LoadRecentSearches();
     }
@@ -77,8 +75,9 @@ public class RecentSearchService
                 _recentSearches = JsonSerializer.Deserialize<List<RecentSearchItem>>(json) ?? new();
             }
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.Log($"Recent searches could not be read - starting an empty list: {ex.Message}");
             _recentSearches = new();
         }
     }
@@ -93,9 +92,10 @@ public class RecentSearchService
             });
             File.WriteAllText(_recentSearchesFile, json);
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore save errors
+            // Best-effort: losing the search history must never interrupt a search.
+            Logger.Log($"Recent searches could not be saved: {ex.Message}");
         }
     }
 }

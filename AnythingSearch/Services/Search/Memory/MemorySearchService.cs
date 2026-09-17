@@ -1,3 +1,4 @@
+using AnythingSearch.Helper;
 using AnythingSearch.Models;
 using Timer = System.Threading.Timer;
 
@@ -340,6 +341,7 @@ public sealed class MemorySearchService : IDisposable
             }
             catch (Exception ex)
             {
+                Logger.Log($"In-memory index build failed ({reason}): {ex}");
                 StatusChanged?.Invoke($"In-memory index unavailable ({ex.Message}) - using the database instead");
             }
             finally

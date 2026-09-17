@@ -1,3 +1,4 @@
+using AnythingSearch.Helper;
 using AnythingSearch.Models;
 
 namespace AnythingSearch.Services;
@@ -39,7 +40,7 @@ public partial class BackgroundIndexingService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[Indexing] Consumer stopped: {ex.Message}");
+            Logger.Log($"Indexing writer stopped early - entries may be re-indexed: {ex.Message}");
         }
     }
 

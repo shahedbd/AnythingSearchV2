@@ -1,5 +1,6 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using AnythingSearch.Models;
+using AnythingSearch.Services;
 
 namespace AnythingSearch.Forms;
 
@@ -51,11 +52,11 @@ public partial class MainForm
 
     private void BtnSettings_Click(object? sender, EventArgs e)
     {
-        var settingsForm = new SettingsForm(_settingsManager);
+        var settingsForm = new SettingsForm();
         settingsForm.ShowDialog(this);
 
         // Settings may have changed Minimize-to-Tray; apply it without requiring a restart
-        _minimizeToTray = _settingsManager.Settings.MinimizeToTray;
+        _minimizeToTray = SettingsService.Current.MinimizeToTray;
     }
 
     #endregion

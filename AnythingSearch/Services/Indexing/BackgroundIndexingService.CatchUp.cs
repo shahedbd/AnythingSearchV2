@@ -1,3 +1,4 @@
+using AnythingSearch.Helper;
 using AnythingSearch.Models;
 
 namespace AnythingSearch.Services;
@@ -55,7 +56,7 @@ public partial class BackgroundIndexingService
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[CatchUp] {root.Directory.FullName}: {ex.Message}");
+                    Logger.Log($"Catch-up skipped {root.Directory.FullName}: {ex.Message}");
                 }
 
                 done++;

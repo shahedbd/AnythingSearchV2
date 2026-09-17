@@ -207,7 +207,7 @@ public partial class FileWatcherService
         if (string.IsNullOrEmpty(path)) return true;
 
         // Ignore excluded folders
-        foreach (var excluded in _settingsManager.Settings.ExcludedFolders)
+        foreach (var excluded in SettingsService.Current.ExcludedFolders)
         {
             if (path.Contains($"\\{excluded}\\", StringComparison.OrdinalIgnoreCase) ||
                 path.EndsWith($"\\{excluded}", StringComparison.OrdinalIgnoreCase))
@@ -244,6 +244,6 @@ public partial class FileWatcherService
     {
         if (string.IsNullOrEmpty(extension)) return false;
         var ext = extension.TrimStart('.').ToLowerInvariant();
-        return _settingsManager.Settings.ExcludedExtensions.Contains(ext);
+        return SettingsService.Current.ExcludedExtensions.Contains(ext);
     }
 }

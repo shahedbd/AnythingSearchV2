@@ -82,5 +82,5 @@ public partial class BackgroundIndexingService
     /// Entries a scope may add before its next sub-phase is published, or 0 when segmentation is
     /// switched off in settings.
     /// </summary>
-    private long SegmentThreshold => Math.Max(0, _settingsManager.Settings.LargeScopeSegmentItems);
+    private long SegmentThreshold => Math.Max(0, SettingsService.Current.LargeScopeSegmentItems);
 }

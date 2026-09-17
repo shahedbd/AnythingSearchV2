@@ -1,4 +1,5 @@
-﻿using AnythingSearch.Services;
+using AnythingSearch.Helper;
+using AnythingSearch.Services;
 
 namespace AnythingSearch.Forms;
 
@@ -8,8 +9,6 @@ namespace AnythingSearch.Forms;
 /// </summary>
 public partial class SettingsForm : Form
 {
-    private readonly SettingsManager _settingsManager;
-
     // Colors
     private static readonly Color PrimaryColor = Color.FromArgb(0, 120, 212);
     private static readonly Color BackgroundColor = Color.FromArgb(250, 250, 250);
@@ -27,9 +26,8 @@ public partial class SettingsForm : Form
     private Button btnSave = null!;
     private Button btnCancel = null!;
 
-    public SettingsForm(SettingsManager settingsManager)
+    public SettingsForm()
     {
-        _settingsManager = settingsManager;
         InitializeComponent();
         LoadSettings();
     }
@@ -166,7 +164,7 @@ public partial class SettingsForm : Form
 
     private void LoadSettings()
     {
-        var settings = _settingsManager.Settings;
+        var settings = SettingsService.Current;
 
         lstExcludedFolders.Items.Clear();
         foreach (var folder in settings.ExcludedFolders)
@@ -205,7 +203,7 @@ public partial class SettingsForm : Form
 
     private void BtnSave_Click(object? sender, EventArgs e)
     {
-        var settings = _settingsManager.Settings;
+        var settings = SettingsService.Current;
 
         settings.ExcludedFolders.Clear();
         foreach (var item in lstExcludedFolders.Items)
@@ -216,7 +214,7 @@ public partial class SettingsForm : Form
         settings.StartWithWindows = chkStartWithWindows.Checked;
         settings.MinimizeToTray = chkMinimizeToTray.Checked;
 
-        _settingsManager.Save();
+        SettingsService.Save();
 
         // Handle startup registration
         if (settings.StartWithWindows)
@@ -236,7 +234,7 @@ public partial class SettingsForm : Form
         {
             var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
                 @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true);
-            key?.SetValue("AnythingSearch", Application.ExecutablePath);
+            key?.SetValue(AppConfig.StartupRegistryValueName, Application.ExecutablePath);
         }
         catch { }
     }
@@ -247,7 +245,7 @@ public partial class SettingsForm : Form
         {
             var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
                 @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true);
-            key?.DeleteValue("AnythingSearch", false);
+            key?.DeleteValue(AppConfig.StartupRegistryValueName, false);
         }
         catch { }
     }

@@ -22,7 +22,6 @@ public partial class MainForm : Form
     #region Services & Dependencies
 
     private readonly FileDatabase _database;
-    private readonly SettingsManager _settingsManager;
     private readonly SearchManager _searchManager;
     private readonly FileWatcherService _fileWatcher;
     private readonly RecentSearchService _recentSearchService;
@@ -80,15 +79,14 @@ public partial class MainForm : Form
         this.AutoScaleDimensions = new SizeF(96F, 96F);
 
         _database = new FileDatabase();
-        _settingsManager = new SettingsManager();
-        _searchManager = new SearchManager(_database, _settingsManager);
-        _fileWatcher = new FileWatcherService(_database, _settingsManager);
+        _searchManager = new SearchManager(_database);
+        _fileWatcher = new FileWatcherService(_database);
         // Changes the watcher writes to SQLite are mirrored into the in-memory index, so a file
         // created moments ago is searchable without waiting for the next snapshot rebuild.
         _fileWatcher.AttachMemoryIndex(_searchManager.MemoryIndex);
         _recentSearchService = new RecentSearchService();
 
-        _minimizeToTray = _settingsManager.Settings.MinimizeToTray;
+        _minimizeToTray = SettingsService.Current.MinimizeToTray;
 
         _folderIcon = GetStockIcon(StockIconId.Folder);
         _fileIcon = GetStockIcon(StockIconId.DocumentNotAssociated);

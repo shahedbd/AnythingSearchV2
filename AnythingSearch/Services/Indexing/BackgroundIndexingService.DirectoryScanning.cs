@@ -28,8 +28,8 @@ public partial class BackgroundIndexingService
         if (IndexPlanner.IsSkippable(root.Directory)) return;
 
         var writer = _channel!.Writer;
-        var throttleBatch = Math.Max(0, _settingsManager.Settings.IndexThrottleBatchSize);
-        var throttleDelay = Math.Max(0, _settingsManager.Settings.IndexThrottleDelayMs);
+        var throttleBatch = Math.Max(0, SettingsService.Current.IndexThrottleBatchSize);
+        var throttleDelay = Math.Max(0, SettingsService.Current.IndexThrottleDelayMs);
 
         var directoryStack = new Stack<DirectoryInfo>(64);
         directoryStack.Push(root.Directory);

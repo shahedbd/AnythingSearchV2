@@ -16,7 +16,6 @@ namespace AnythingSearch.Services;
 public partial class FileWatcherService : IDisposable
 {
     private readonly FileDatabase _database;
-    private readonly SettingsManager _settingsManager;
 
     // Every change written to SQLite is mirrored here so the in-memory index stays current
     // between snapshot rebuilds. Null until the search manager hands it over.
@@ -45,10 +44,9 @@ public partial class FileWatcherService : IDisposable
     /// </summary>
     public void AttachMemoryIndex(MemorySearchService memoryIndex) => _memoryIndex = memoryIndex;
 
-    public FileWatcherService(FileDatabase database, SettingsManager settingsManager)
+    public FileWatcherService(FileDatabase database)
     {
         _database = database;
-        _settingsManager = settingsManager;
 
         // Process changes periodically (batch processing)
         _processTimer = new Timer(ProcessChangesCallback, null, Timeout.Infinite, Timeout.Infinite);

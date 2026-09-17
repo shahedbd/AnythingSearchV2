@@ -17,7 +17,7 @@ public partial class MainForm
         _trayContextMenu.Font = new Font("Segoe UI", 9.5F);
         _trayContextMenu.Renderer = new ModernToolStripRenderer();
 
-        var openItem = new ToolStripMenuItem("📂  Open Anything Search")
+        var openItem = new ToolStripMenuItem($"📂  Open {AppConfig.AppName}")
         {
             Font = new Font("Segoe UI", 9.5F, FontStyle.Bold)
         };
@@ -67,7 +67,7 @@ public partial class MainForm
         _notifyIcon = new NotifyIcon
         {
             Icon = CommonHelper.LoadApplicationIcon(),
-            Text = "Anything Search - Quick File Search",
+            Text = $"{AppConfig.AppName} - Quick File Search",
             Visible = true,
             ContextMenuStrip = _trayContextMenu
         };
@@ -120,7 +120,7 @@ public partial class MainForm
                 _ => "a partial index - still indexing"
             };
 
-            _notifyIcon.ShowBalloonTip(2000, "Anything Search",
+            _notifyIcon.ShowBalloonTip(2000, AppConfig.AppName,
                 $"Running in background using {sourceText}.\nDouble-click the tray icon to open.",
                 ToolTipIcon.Info);
             _showBalloonOnMinimize = false;
@@ -131,7 +131,7 @@ public partial class MainForm
     {
         if (_notifyIcon != null)
         {
-            var tooltip = $"Anything Search - {status}";
+            var tooltip = $"{AppConfig.AppName} - {status}";
             _notifyIcon.Text = tooltip.Length > 63 ? tooltip.Substring(0, 60) + "..." : tooltip;
 
             if (_trayContextMenu.Items["statusItem"] is ToolStripMenuItem statusItem)
