@@ -9,6 +9,38 @@ C:\Users\Public\src\MS_Store_App\NetSpeedMeterPlus\Doc\Requirements
 - Preserve existing behavior unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
+For phase1:priority, add only:
+Downloads directory
+
+
+
+
+
+
+    {
+      "Key": "phase1:priority",
+      "Phase": "Priority",
+      "Drive": "C:\\",
+      "Status": "Completed",
+      "StartedAt": "2026-09-17T16:07:19.8869693+06:00",
+      "CompletedAt": "2026-09-17T16:07:20.021036+06:00",
+      "Files": 1328,
+      "Folders": 169,
+      "LastCheckpoint": "E:\\Personal_Galary_01_Dir20\\URB\\Pic_01-01-2014",
+      "CompletedUnits": [],
+      "Error": null,
+      "FailedUnits": [],
+      "Segments": []
+    },
+
+
+
+
+
+For a bigger size drive can we make dynamic sub phase?
+-if files+dir > 500k
+
+
 For a bigger size drive can we make dynamic sub phase?
 -if files+dir > 500k
 

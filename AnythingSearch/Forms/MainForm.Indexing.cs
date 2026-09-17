@@ -56,7 +56,7 @@ public partial class MainForm
                 $"Current index: {_searchManager.IndexingStatus.TotalItems:N0} items\n" +
                 $"Last updated: {_searchManager.IndexingStatus.IndexingCompletedAt:g}\n\n" +
                 "The index is rebuilt in the background, in phases:\n" +
-                "• Downloads and recent files first, so search returns quickly\n" +
+                "• The Downloads folder first, so search returns quickly\n" +
                 "• Then each other drive, one at a time\n" +
                 "• The system drive last\n\n" +
                 "Search is unavailable until the first phase finishes.",
@@ -71,7 +71,7 @@ public partial class MainForm
             var build = MessageBox.Show(
                 "Build Search Index?\n\n" +
                 "Your drives are scanned in the background, in phases:\n" +
-                "• Downloads and recent files first, so search returns within seconds\n" +
+                "• The Downloads folder first, so search returns within seconds\n" +
                 "• Then each other drive, one at a time - searchable as each one finishes\n" +
                 "• The system drive last\n\n" +
                 "Progress is saved as it goes, so closing the app does not lose the work.",
@@ -130,8 +130,8 @@ public partial class MainForm
 
     /// <summary>
     /// Disable the search box while there is nothing to search, and re-enable it the moment the
-    /// first phase publishes - which is the whole point of indexing Downloads and recent files
-    /// first. The lock only covers the window where a search could return nothing at all.
+    /// first phase publishes - which is the whole point of indexing Downloads first. The lock
+    /// only covers the window where a search could return nothing at all.
     /// </summary>
     private void ApplySearchLock()
     {

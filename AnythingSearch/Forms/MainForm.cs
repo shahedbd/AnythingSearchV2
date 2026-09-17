@@ -10,7 +10,7 @@ namespace AnythingSearch.Forms;
 /// DPI-aware design for Microsoft Store compliance (150% scaling support)
 /// 
 /// Search Strategy:
-/// 1. Indexing runs in phases in the background: Downloads and recent files, then each
+/// 1. Indexing runs in phases in the background: the Downloads folder, then each
 ///    non-OS drive, then the OS drive. Each phase becomes searchable as soon as it finishes.
 /// 2. Search is disabled - with a clear status - only while nothing has been published yet.
 /// 3. Once the index is loaded into RAM, searches are answered from memory; SQLite covers the

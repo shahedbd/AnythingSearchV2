@@ -208,7 +208,7 @@ public partial class BackgroundIndexingService
 
         _completedScopes++;
 
-        // A scope that found nothing (no Downloads folder, no recent files) must not unlock
+        // A scope that found nothing (an empty or missing Downloads folder) must not unlock
         // search - there would be nothing to find, and the status would be misleading.
         if (scopeState.Items == 0 && !_hasSearchableData)
         {

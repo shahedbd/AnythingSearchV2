@@ -10,7 +10,7 @@ namespace AnythingSearch.Services;
 ///
 /// The index is built in three phases, each split into scopes that are published the moment they
 /// finish, so the app is searchable in seconds rather than after a full disk walk:
-///   Phase 1  Downloads and the directories holding recently used files.
+///   Phase 1  the Downloads folder.
 ///   Phase 2  every non-OS fixed drive, one drive at a time, published per drive.
 ///   Phase 3  the OS drive, published once it completes.
 ///

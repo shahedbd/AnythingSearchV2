@@ -27,8 +27,8 @@ internal sealed record IndexScopeDefinition(
 /// <summary>
 /// Decides what gets indexed, in what order, and in what checkpointable units.
 ///
-/// Phase 1 is Downloads plus the directories holding recently used files, so the app becomes
-/// searchable within seconds. Phase 2 is every non-OS fixed drive, one scope per drive so each
+/// Phase 1 is the Downloads folder on its own, so the app becomes searchable within seconds.
+/// Phase 2 is every non-OS fixed drive, one scope per drive so each
 /// one publishes as soon as it finishes. Phase 3 is the OS drive, which is both the largest and
 /// the least interesting to search, so it goes last - and is itself split into sub-phases
 /// (see IndexPlanner.SystemDrive.cs) so a 600,000-entry drive publishes in stages.
@@ -69,7 +69,7 @@ internal sealed partial class IndexPlanner
     {
         var scopes = new List<IndexScopeDefinition>
         {
-            new("phase1:priority", IndexPhase.Priority, OsDrive, "Downloads and recent files")
+            new("phase1:priority", IndexPhase.Priority, OsDrive, "Downloads")
         };
 
         var osDrive = OsDrive;
@@ -113,27 +113,17 @@ internal sealed partial class IndexPlanner
     };
 
     /// <summary>
-    /// Phase 1: Downloads in full, plus the directory of each recently used file. The recent
-    /// directories are deliberately NOT recursive - the point is to make the files the user has
-    /// actually been working with searchable immediately, not to walk their whole project trees.
+    /// Phase 1: the Downloads folder, in full. It is split like any other directory, so a large
+    /// Downloads folder still checkpoints as it goes rather than being one all-or-nothing unit.
     /// </summary>
     private List<ScanRoot> ExpandPriorityUnits()
     {
         var units = new List<ScanRoot>();
 
-        if (Directory.Exists(DownloadsPath) && !IsExcluded(DownloadsPath))
-            units.Add(new ScanRoot(new DirectoryInfo(DownloadsPath), true));
+        if (!Directory.Exists(DownloadsPath) || IsExcluded(DownloadsPath))
+            return units;
 
-        foreach (var path in RecentItemsLocator.GetRecentDirectories())
-        {
-            if (IsExcluded(path)) continue;
-
-            // Already covered by the Downloads unit above.
-            if (path.StartsWith(DownloadsPath, StringComparison.OrdinalIgnoreCase)) continue;
-
-            units.Add(new ScanRoot(new DirectoryInfo(path), false));
-        }
-
+        AddSplitUnits(new DirectoryInfo(DownloadsPath), units);
         return Deduplicate(units);
     }
 

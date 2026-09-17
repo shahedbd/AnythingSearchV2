@@ -10,7 +10,7 @@ namespace AnythingSearch.Models;
 /// </summary>
 public enum IndexPhase
 {
-    /// <summary>Phase 1: Downloads plus the directories holding recently used files.</summary>
+    /// <summary>Phase 1: the Downloads folder.</summary>
     Priority = 1,
 
     /// <summary>Phase 2: every non-OS fixed drive, one drive at a time.</summary>
