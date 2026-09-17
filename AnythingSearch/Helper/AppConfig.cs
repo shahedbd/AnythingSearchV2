@@ -22,7 +22,7 @@ namespace AnythingSearch.Helper
         /// ApplicationDataManager rather than composing the path itself, so the fallback chain
         /// that keeps 1M+ installs writable applies to all of them.
         /// </summary>
-        public static string AppDataFolderName = "AnythingSearch";
+        public static string AppDataFolderName = "AnythingSearch_2000";
 
         /// <summary>Product page, linked from the About dialog.</summary>
         public static string ProductPageUrl = "https://zerobytebd.com/anything-search";
