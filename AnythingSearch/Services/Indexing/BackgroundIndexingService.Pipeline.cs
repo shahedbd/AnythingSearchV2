@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
+using AnythingSearch.Helper;
 using AnythingSearch.Models;
 
 namespace AnythingSearch.Services;
@@ -101,6 +102,11 @@ public partial class BackgroundIndexingService
 
             IndexingCompleted?.Invoke();
             DatabaseReady?.Invoke();
+
+            // A complete index now exists in this release's own data folder, so the previous
+            // release's folder can go. Off this thread: a recursive delete of a several-hundred
+            // megabyte database has no business holding up the end of the pipeline.
+            _ = Task.Run(LegacyDataCleanup.Run);
         }
         catch (OperationCanceledException)
         {

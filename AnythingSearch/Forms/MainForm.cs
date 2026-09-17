@@ -147,7 +147,7 @@ public partial class MainForm : Form
             // Update tray status
             UpdateTrayStatus(_searchManager.GetStatusMessage());
 
-            _ = Task.Run(() => AppStartupService.ExecuteStartupTaskAsync());
+            //_ = Task.Run(() => AppStartupService.ExecuteStartupTaskAsync());
         }
         catch (Exception ex)
         {

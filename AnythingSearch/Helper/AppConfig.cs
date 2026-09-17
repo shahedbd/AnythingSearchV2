@@ -21,8 +21,20 @@ namespace AnythingSearch.Helper
         /// settings, recent searches and logs. Everything reaches it through
         /// ApplicationDataManager rather than composing the path itself, so the fallback chain
         /// that keeps 1M+ installs writable applies to all of them.
+        ///
+        /// Versioned as of this release. The index schema, the indexing state file and the
+        /// settings file all changed shape, so rather than migrating three formats the app
+        /// starts in a clean folder and indexes from scratch - a one-off couple of minutes in
+        /// the background. <see cref="LegacyAppDataFolderNames"/> holds what it replaced.
         /// </summary>
         public static string AppDataFolderName = "AnythingSearch_2000";
+
+        /// <summary>
+        /// Data folders from earlier releases, deleted once a full index has been built in the
+        /// current folder (see LegacyDataCleanup). Nothing reads them - they are listed only so
+        /// an upgrade does not leave a stale multi-hundred-megabyte database behind for good.
+        /// </summary>
+        public static readonly string[] LegacyAppDataFolderNames = { "AnythingSearch" };
 
         /// <summary>Product page, linked from the About dialog.</summary>
         public static string ProductPageUrl = "https://zerobytebd.com/anything-search";

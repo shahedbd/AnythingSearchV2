@@ -144,6 +144,12 @@ public partial class BackgroundIndexingService : IDisposable
 
             Logger.Log($"Index already complete with {count:N0} items - nothing to do.");
             DatabaseReady?.Invoke();
+
+            // This release indexes into a versioned data folder, so the previous release's
+            // folder is dead weight once a complete index exists here. Retried on every launch
+            // that finds a complete index, because the first attempt can fail while an older
+            // copy of the app is still holding its database open.
+            _ = Task.Run(LegacyDataCleanup.Run);
             return;
         }
 
