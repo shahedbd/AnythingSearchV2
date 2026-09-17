@@ -1,4 +1,4 @@
-﻿namespace AnythingSearch.Models;
+namespace AnythingSearch.Models;
 
 public class AppSettings
 {
@@ -51,6 +51,14 @@ public class AppSettings
 
     /// <summary>Pause in milliseconds after each throttle batch. 0 disables throttling.</summary>
     public int IndexThrottleDelayMs { get; set; } = 4;
+
+    /// <summary>
+    /// Entries one indexing scope may add before what it has indexed so far is published as a
+    /// sub-phase and becomes searchable. A large data drive (1.4 million files is not unusual)
+    /// would otherwise stay invisible for its entire walk, because - unlike the OS drive - there
+    /// is no way to know in advance where to divide it. Set to 0 to publish only whole drives.
+    /// </summary>
+    public int LargeScopeSegmentItems { get; set; } = 500_000;
 
     /// <summary>
     /// Flag to track if this is the first time the app is running.

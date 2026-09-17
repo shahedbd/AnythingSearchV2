@@ -29,6 +29,24 @@ public enum IndexScopeStatus
 }
 
 /// <summary>
+/// One published sub-phase of a scope that grew past
+/// <see cref="AppSettings.LargeScopeSegmentItems"/> entries. Recorded for display and
+/// diagnostics: resume is driven by <see cref="IndexScopeState.CompletedUnits"/>, not by these.
+/// </summary>
+public class IndexSegmentState
+{
+    public int Index { get; set; }
+
+    /// <summary>Cumulative items indexed in the scope when this sub-phase was published.</summary>
+    public long Items { get; set; }
+
+    /// <summary>Last unit committed before this sub-phase was published.</summary>
+    public string LastUnit { get; set; } = "";
+
+    public DateTime? CompletedAt { get; set; }
+}
+
+/// <summary>
 /// Persisted progress for one scope (phase 1 as a whole, or a single drive).
 /// <see cref="CompletedUnits"/> is the checkpoint: the units already committed to the database,
 /// which a resumed run skips instead of walking again.
@@ -61,6 +79,12 @@ public class IndexScopeState
 
     /// <summary>Units that could not be read, so the user can see what was skipped.</summary>
     public List<string> FailedUnits { get; set; } = new();
+
+    /// <summary>
+    /// Sub-phases already published for this scope. Empty for a scope small enough to publish in
+    /// one go, which is the common case.
+    /// </summary>
+    public List<IndexSegmentState> Segments { get; set; } = new();
 
     [JsonIgnore]
     public long Items => Files + Folders;

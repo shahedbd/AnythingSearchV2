@@ -35,8 +35,23 @@ internal sealed record IndexScopeDefinition(
 /// </summary>
 internal sealed partial class IndexPlanner
 {
-    /// <summary>A top-level directory with more subdirectories than this is split into them.</summary>
+    /// <summary>A directory with more subdirectories than this is split into them.</summary>
     private const int SplitThreshold = 4;
+
+    /// <summary>
+    /// Levels a directory with only a handful of subdirectories may still be descended, looking
+    /// for somewhere worth dividing. A drive whose data sits under one or two enormous folders -
+    /// a media library, a course archive - would otherwise be a single unit of a million-plus
+    /// entries: no checkpoint inside it, and no sub-phase either.
+    /// </summary>
+    private const int ExtraSplitDepth = 2;
+
+    /// <summary>
+    /// Ceiling on units per scope. Splitting deeper costs a directory read per level while
+    /// planning and a path per unit in the state file, so a pathological layout must not be
+    /// allowed to turn either into something unbounded.
+    /// </summary>
+    private const int MaxUnitsPerScope = 2_000;
 
     private readonly SettingsManager _settingsManager;
 
@@ -163,25 +178,47 @@ internal sealed partial class IndexPlanner
     }
 
     /// <summary>
-    /// Queue a directory as one unit, or - when it is large enough to be worth finer
-    /// checkpoints - as one unit per subdirectory plus a files-only unit for the parent.
+    /// Queue a directory as one unit, or - when it is worth finer checkpoints - as one unit per
+    /// subdirectory plus a files-only unit for the parent.
+    ///
+    /// A wide directory is split straight away. A narrow one is descended instead, up to
+    /// <see cref="ExtraSplitDepth"/> levels: the unit count is what gives both resume and the
+    /// sub-phase threshold something to work with, and "two folders holding a million files
+    /// each" is a common way for a data drive to be organised. Because the descent only happens
+    /// where the fan-out is small, it cannot multiply out - at most
+    /// <see cref="SplitThreshold"/> ^ <see cref="ExtraSplitDepth"/> units per branch.
     /// </summary>
-    private void AddSplitUnits(DirectoryInfo directory, List<ScanRoot> units)
+    private void AddSplitUnits(DirectoryInfo directory, List<ScanRoot> units, int depthBudget = ExtraSplitDepth)
     {
         try
         {
-            var subDirectories = directory.GetDirectories();
-            if (subDirectories.Length <= SplitThreshold)
+            var subDirectories = directory.GetDirectories()
+                .Where(d => !IsExcluded(d.FullName) && !IsSkippable(d))
+                .ToList();
+
+            if (subDirectories.Count == 0 || units.Count >= MaxUnitsPerScope)
+            {
+                units.Add(new ScanRoot(directory, true));
+                return;
+            }
+
+            if (subDirectories.Count > SplitThreshold)
+            {
+                foreach (var subDirectory in subDirectories)
+                    units.Add(new ScanRoot(subDirectory, true));
+
+                units.Add(new ScanRoot(directory, false));
+                return;
+            }
+
+            if (depthBudget <= 0)
             {
                 units.Add(new ScanRoot(directory, true));
                 return;
             }
 
             foreach (var subDirectory in subDirectories)
-            {
-                if (!IsExcluded(subDirectory.FullName) && !IsSkippable(subDirectory))
-                    units.Add(new ScanRoot(subDirectory, true));
-            }
+                AddSplitUnits(subDirectory, units, depthBudget - 1);
 
             units.Add(new ScanRoot(directory, false));
         }

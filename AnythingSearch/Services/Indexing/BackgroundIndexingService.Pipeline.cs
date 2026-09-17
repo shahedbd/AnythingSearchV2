@@ -122,19 +122,24 @@ public partial class BackgroundIndexingService
     }
 
     /// <summary>
-    /// Index one scope: phase 1 as a whole, or a single drive. Its data is published - and
-    /// therefore searchable - only once every one of its units has been committed.
+    /// Index one scope: phase 1 as a whole, one drive, or one OS-drive sub-phase.
+    ///
+    /// Normally the scope publishes - becomes searchable - once all of its units are committed.
+    /// A scope that keeps growing publishes what it has every
+    /// <see cref="AppSettings.LargeScopeSegmentItems"/> entries instead, so a 1.4-million-file
+    /// drive does not stay invisible for its whole walk (see
+    /// BackgroundIndexingService.Segments.cs).
     /// </summary>
     private async Task RunScopeAsync(
         IndexScopeDefinition scope, IndexScopeState scopeState, CancellationToken token)
     {
         _currentPhase = scope.Phase;
-        _phaseLabel = scope.Label;
         Interlocked.Exchange(ref _scopeFiles, 0);
         Interlocked.Exchange(ref _scopeFolders, 0);
 
         long baseFiles;
         long baseFolders;
+        long segmentBase;
 
         lock (_stateLock)
         {
@@ -143,6 +148,11 @@ public partial class BackgroundIndexingService
             scopeState.Error = null;
             baseFiles = scopeState.Files;
             baseFolders = scopeState.Folders;
+
+            // A resumed scope continues from what it had already published, so the next sub-phase
+            // is another threshold's worth of entries away rather than immediate.
+            segmentBase = scopeState.Items;
+            _phaseLabel = SegmentLabel(scope, scopeState, final: false);
             _state.Save();
         }
 
@@ -153,12 +163,29 @@ public partial class BackgroundIndexingService
         var skipDirectories = SkipDirectoriesFor(scope);
         var chunkSize = Math.Max(1, _settingsManager.Settings.MaxIndexingThreads);
 
+        var segmentThreshold = SegmentThreshold;
+
         for (int offset = 0; offset < units.Count; offset += chunkSize)
         {
             if (token.IsCancellationRequested) break;
 
             var chunk = units.GetRange(offset, Math.Min(chunkSize, units.Count - offset));
             await RunChunkAsync(chunk, scopeState, skipDirectories, baseFiles, baseFolders, token);
+
+            if (token.IsCancellationRequested) break;
+            if (segmentThreshold == 0) continue;
+
+            // Nothing to gain from a sub-phase on the last chunk - the scope itself is about to
+            // publish - so this only fires while there is still work left in the scope.
+            if (offset + chunkSize >= units.Count) continue;
+
+            long indexed;
+            lock (_stateLock) indexed = scopeState.Items;
+
+            if (indexed - segmentBase < segmentThreshold) continue;
+
+            segmentBase = indexed;
+            await PublishSegmentAsync(scope, scopeState);
         }
 
         if (token.IsCancellationRequested) return;
@@ -191,8 +218,9 @@ public partial class BackgroundIndexingService
 
         _hasSearchableData = true;
 
-        ReportProgress($"{scope.Label} indexed - {scopeState.Items:N0} items, now searchable");
-        ScopePublished?.Invoke(scope.Label);
+        var label = SegmentLabel(scope, scopeState, final: true);
+        ReportProgress($"{label} indexed - {scopeState.Items:N0} items, now searchable");
+        ScopePublished?.Invoke(label);
     }
 
     /// <summary>
