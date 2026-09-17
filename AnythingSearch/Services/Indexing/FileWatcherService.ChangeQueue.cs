@@ -52,7 +52,7 @@ public partial class FileWatcherService
         });
 
         // Drain as soon as the queue is filling up, so we never have to drop a change
-        if (_pendingChanges.Count >= HighWaterMark && !_isProcessing)
+        if (_pendingChanges.Count >= HighWaterMark && Volatile.Read(ref _processing) == 0)
         {
             Task.Run(async () => await ProcessChangesAsync(_pendingChanges.Count >= MaxPendingChanges));
         }
@@ -63,8 +63,8 @@ public partial class FileWatcherService
     /// </summary>
     private void ProcessChangesCallback(object? state)
     {
-        // Prevent concurrent processing
-        if (_isProcessing) return;
+        // Cheap early exit; ProcessChangesAsync claims the batch for real.
+        if (Volatile.Read(ref _processing) != 0) return;
 
         Task.Run(async () => await ProcessChangesAsync());
     }
@@ -77,9 +77,13 @@ public partial class FileWatcherService
     /// </param>
     private async Task ProcessChangesAsync(bool flushAll = false)
     {
-        if (_isProcessing || _pendingChanges.IsEmpty) return;
+        if (_pendingChanges.IsEmpty) return;
 
-        _isProcessing = true;
+        // Claim the batch atomically. The check-then-set this replaced could let the 3-second
+        // timer and the high-water-mark drain both get past it, so two batches applied the same
+        // queued changes at once - duplicated database work, and twice the entries pushed into
+        // the in-memory overlay.
+        if (Interlocked.CompareExchange(ref _processing, 1, 0) != 0) return;
 
         try
         {
@@ -133,7 +137,7 @@ public partial class FileWatcherService
         }
         finally
         {
-            _isProcessing = false;
+            Volatile.Write(ref _processing, 0);
         }
     }
 

@@ -9,12 +9,29 @@ C:\Users\Public\src\MS_Store_App\AnythingSearch\Doc\Requirements
 - Preserve existing behavior unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
-Review this code: /DeviceData/AppStartupService.cs
- var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AnythingSearch");
-bool _IsNewInstallation = Directory.Exists(path) ? true : false;
+Before production release now, review full code and give me report as:
+-high
+-medium 
+-low
 
-Previously we done it by: 
-//bool _IsNewInstallation = SettingsService.Current.AppVersion == 0 ? true : false;
+Priority isses list.
+Write doc here:
+G:\src\MS_Store_App\AnythingSearchV2\Doc\Requirements
+
+
+
+
+
+With updated code, some time app search takes more than longer time. First show 3 charecters result instantly then for 5 charecters 
+it wait long time. 87053ms
+
+check screenshort.
+
+Might have impact with Auto watch module. Review Auto watch module full code.
+
+Find out root cause first and fix accordingly.
+
+
 
 - Keep files small: Target ≤300 lines; 400 lines absolute maximum. Split large files into focused modules.
 - Skip build, test, publish, deployment, migration, and package commands unless explicitly requested; I will handle them.
@@ -23,6 +40,17 @@ Previously we done it by:
 - Reuse existing code and dependencies; avoid unnecessary refactoring or new dependencies.
 - Preserve existing behavior unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
+
+
+
+
+Review this code: /DeviceData/AppStartupService.cs
+ var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AnythingSearch");
+bool _IsNewInstallation = Directory.Exists(path) ? true : false;
+
+Previously we done it by: 
+//bool _IsNewInstallation = SettingsService.Current.AppVersion == 0 ? true : false;
+
 
 
 

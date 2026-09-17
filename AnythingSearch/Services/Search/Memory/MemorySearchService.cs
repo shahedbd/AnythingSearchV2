@@ -15,8 +15,12 @@ namespace AnythingSearch.Services.Search.Memory;
 /// on the previous snapshot until the new one is swapped in with a single reference assignment.
 ///
 /// SQLite remains the durable store; this is purely a read accelerator in front of it.
+///
+/// Split into partial classes: this file owns the snapshot lifecycle, the pending-change delta
+/// and the rebuild policy; see MemorySearchService.Query.cs for query execution and how the
+/// delta is folded into a result.
 /// </summary>
-public sealed class MemorySearchService : IDisposable
+public sealed partial class MemorySearchService : IDisposable
 {
     private readonly string _databasePath;
     private readonly Timer _rebuildTimer;
@@ -39,8 +43,23 @@ public sealed class MemorySearchService : IDisposable
     /// <summary>Rebuild once this many pending changes have accumulated.</summary>
     private const int DeltaRebuildThreshold = 20_000;
 
+    /// <summary>
+    /// Stop growing the delta past this. Every search copies the delta and scans it, so an
+    /// unbounded delta makes searching get slower the busier the disk is - exactly backwards.
+    /// Past this point the pending changes are dropped and the snapshot is treated as stale
+    /// instead: searches stay fast and the next rebuild picks everything up from the database,
+    /// which is the durable copy in any case.
+    /// </summary>
+    private const int DeltaOverflowLimit = 60_000;
+
     /// <summary>Rebuild this long after the last change, so a quiet machine stays exact.</summary>
     private const int QuietRebuildDelayMs = 120_000;
+
+    /// <summary>
+    /// Minimum gap between rebuilds. A rebuild reads every row in the database, so letting one
+    /// start the instant the last finished turned a busy disk into a continuous rebuild loop.
+    /// </summary>
+    private const int RebuildCooldownMs = 15_000;
 
     public event Action<string>? StatusChanged;
 
@@ -90,112 +109,6 @@ public sealed class MemorySearchService : IDisposable
     /// </summary>
     public void Start() => RequestRebuild("initial load");
 
-    /// <summary>
-    /// Run a query against the snapshot. Returns false when no snapshot exists yet, which tells
-    /// the caller to fall back to SQLite.
-    /// </summary>
-    public bool TrySearch(
-        string query,
-        int limit,
-        CancellationToken cancellationToken,
-        out List<FileEntry> results,
-        out int totalMatches)
-    {
-        var snapshot = _snapshot;
-        if (snapshot == null)
-        {
-            results = new List<FileEntry>();
-            totalMatches = 0;
-            return false;
-        }
-
-        var indices = snapshot.Search(query, limit, cancellationToken, out totalMatches);
-        var delta = PublishDelta();
-
-        results = new List<FileEntry>(indices.Count);
-        foreach (var index in indices)
-        {
-            // Drop the snapshot's version of any path the delta speaks for - deleted since, or
-            // written again since. MergeAdded puts the current version back for the latter.
-            // The total can be off by the few such rows that fall outside this page, which is not
-            // something a result count of thousands makes visible.
-            if (delta.Shadowed.Count > 0 && delta.Shadowed.Contains(snapshot.PathOf(index)))
-            {
-                totalMatches--;
-                continue;
-            }
-
-            results.Add(snapshot.Materialize(index));
-        }
-
-        if (delta.Added.Count > 0)
-            MergeAdded(query, limit, delta, results, ref totalMatches);
-
-        return true;
-    }
-
-    /// <summary>
-    /// Fold entries created since the snapshot into the result list. The delta is small by design,
-    /// so a straight scan and a re-sort of the merged page is cheaper than any index over it.
-    /// </summary>
-    private void MergeAdded(string query, int limit, Delta delta, List<FileEntry> results, ref int totalMatches)
-    {
-        var terms = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        int added = 0;
-
-        foreach (var entry in delta.Added)
-        {
-            if (!MatchesAllTerms(entry, terms)) continue;
-
-            results.Add(entry);
-            added++;
-        }
-
-        if (added == 0) return;
-
-        totalMatches += added;
-
-        var pattern = terms[0];
-        results.Sort((a, b) => Compare(a, b, pattern));
-
-        if (results.Count > limit)
-            results.RemoveRange(limit, results.Count - limit);
-    }
-
-    private static bool MatchesAllTerms(FileEntry entry, string[] terms)
-    {
-        foreach (var term in terms)
-        {
-            if (entry.Name.Contains(term, StringComparison.OrdinalIgnoreCase)) continue;
-            if (entry.Path.Contains(term, StringComparison.OrdinalIgnoreCase)) continue;
-            return false;
-        }
-        return true;
-    }
-
-    /// <summary>The ordering the SQLite query used: folders, then relevance, then shortest name.</summary>
-    private static int Compare(FileEntry a, FileEntry b, string pattern)
-    {
-        int byFolder = b.IsFolder.CompareTo(a.IsFolder);
-        if (byFolder != 0) return byFolder;
-
-        int byRelevance = Relevance(a, pattern).CompareTo(Relevance(b, pattern));
-        if (byRelevance != 0) return byRelevance;
-
-        int byLength = a.Name.Length.CompareTo(b.Name.Length);
-        if (byLength != 0) return byLength;
-
-        return string.CompareOrdinal(a.Name, b.Name);
-    }
-
-    private static int Relevance(FileEntry entry, string pattern)
-    {
-        if (entry.Name.Equals(pattern, StringComparison.OrdinalIgnoreCase)) return 1;
-        if (entry.Name.StartsWith(pattern, StringComparison.OrdinalIgnoreCase)) return 2;
-        if (entry.Name.Contains(pattern, StringComparison.OrdinalIgnoreCase)) return 3;
-        return 4;
-    }
-
     #region Live updates
 
     /// <summary>Record an entry the file watcher has just written to SQLite.</summary>
@@ -216,6 +129,7 @@ public sealed class MemorySearchService : IDisposable
         if (_disposed || _snapshot == null) return;
 
         int pending;
+        bool overflowed;
         lock (_deltaLock)
         {
             if (entry == null)
@@ -229,14 +143,33 @@ public sealed class MemorySearchService : IDisposable
                 _pendingAdded[path] = entry;
             }
 
-            _publishedDelta = null;   // readers rebuild it on their next search
             pending = _pendingAdded.Count + _pendingRemoved.Count;
+            overflowed = pending > DeltaOverflowLimit;
+
+            if (overflowed)
+            {
+                // Too many changes to keep carrying. Drop them and let the rebuild read the
+                // current state from the database, rather than making every search pay for them.
+                _pendingAdded.Clear();
+                _pendingRemoved.Clear();
+                pending = 0;
+            }
+
+            _publishedDelta = null;   // readers rebuild it on their next search
         }
 
-        if (pending >= DeltaRebuildThreshold)
+        if (overflowed)
+            RequestRebuild("more changes than the overlay can carry");
+        else if (pending >= DeltaRebuildThreshold)
             RequestRebuild("delta threshold reached");
-        else
+        else if (pending <= 2 || (pending & 0xFF) == 0)
+        {
+            // Throttled: indexing one new directory can raise thousands of changes, and
+            // rescheduling the timer for every one of them contends on the shared timer queue for
+            // no benefit. Pushing the deadline out less often only ever makes the rebuild happen
+            // sooner, never later, so nothing is lost.
             _rebuildTimer.Change(QuietRebuildDelayMs, Timeout.Infinite);
+        }
     }
 
     /// <summary>
@@ -326,13 +259,17 @@ public sealed class MemorySearchService : IDisposable
                 stopwatch.Stop();
 
                 // Building a snapshot allocates large arrays that are grown and then trimmed, and
-                // a rebuild drops the previous snapshot outright. Both land on the large object
-                // heap, which is not collected on its own schedule - without this the process
-                // keeps holding roughly two indexes' worth of memory. Runs once per rebuild,
-                // never on the search path.
-                System.Runtime.GCSettings.LargeObjectHeapCompactionMode =
-                    System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
-                GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+                // a rebuild drops the previous snapshot outright, so prompting a collection here
+                // keeps the process from holding roughly two indexes' worth of memory.
+                //
+                // It must be a BACKGROUND collection. This used to ask for
+                // GCCollectionMode.Aggressive with blocking: true, compacting: true and
+                // LargeObjectHeapCompactionMode.CompactOnce, which suspends every managed thread
+                // while it compacts a large object heap holding the whole index. One of those is
+                // merely slow; back to back, driven by file-system churn, they froze searches for
+                // over a minute. A background collection reclaims nearly as much and never stops
+                // the thread a search is running on.
+                GC.Collect(2, GCCollectionMode.Forced, blocking: false);
 
                 StatusChanged?.Invoke(
                     $"Instant search ready - {index.Count:N0} items in {index.ApproximateBytes / (1024 * 1024):N0} MB " +
@@ -349,8 +286,12 @@ public sealed class MemorySearchService : IDisposable
                 _firstSnapshot.TrySetResult();
                 Volatile.Write(ref _rebuildInFlight, 0);
 
-                if (Interlocked.Exchange(ref _rebuildQueued, 0) == 1)
-                    RequestRebuild("changes arrived during the previous rebuild");
+                // Hand a queued request to the timer rather than starting it straight away. Going
+                // directly back into RequestRebuild meant a disk busy enough to keep the queue
+                // full produced one rebuild after another with no gap, and every one of them
+                // competed with the searches the user was waiting on.
+                if (Interlocked.Exchange(ref _rebuildQueued, 0) == 1 && !_disposed)
+                    _rebuildTimer.Change(RebuildCooldownMs, Timeout.Infinite);
             }
         });
     }

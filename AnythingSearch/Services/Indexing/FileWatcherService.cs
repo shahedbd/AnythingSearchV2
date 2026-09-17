@@ -25,7 +25,9 @@ public partial class FileWatcherService : IDisposable
     private readonly Timer _processTimer;
     private readonly object _lock = new();
     private bool _isRunning = false;
-    private bool _isProcessing = false;
+    // 0 = idle, 1 = a batch is being applied. An int rather than a bool so the timer callback and
+    // the high-water-mark drain can claim a batch with Interlocked instead of racing on a check.
+    private int _processing;
     private DateTime _lastProcessTime = DateTime.MinValue;
 
     // Buffer overflow protection
