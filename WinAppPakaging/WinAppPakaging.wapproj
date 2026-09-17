@@ -65,7 +65,7 @@
     <AppxBundlePlatforms>neutral</AppxBundlePlatforms>
     <GenerateTemporaryStoreCertificate>True</GenerateTemporaryStoreCertificate>
     <HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
-    <PackageCertificateThumbprint>AE6A1E2FEAF586C82C373FBFFC918ED9443FB659</PackageCertificateThumbprint>
+    <PackageCertificateThumbprint>006FFCEF76A19BC4D1480942D8EE8A8A1ECD5278</PackageCertificateThumbprint>
     <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
     <EntryPointProjectUniqueName>..\AnythingSearch\AnythingSearch.csproj</EntryPointProjectUniqueName>
   </PropertyGroup>
@@ -156,7 +156,6 @@
     <Content Include="Images\Wide310x150Logo.scale-150.png" />
     <Content Include="Images\Wide310x150Logo.scale-200.png" />
     <Content Include="Images\Wide310x150Logo.scale-400.png" />
-    <None Include="WinAppPakaging_TemporaryKey.pfx" />
     <None Include="Package.StoreAssociation.xml" />
   </ItemGroup>
   <Import Project="$(WapProjPath)\Microsoft.DesktopBridge.targets" />
