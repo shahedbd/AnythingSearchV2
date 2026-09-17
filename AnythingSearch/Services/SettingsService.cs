@@ -31,7 +31,18 @@ namespace AnythingSearch.Services
             string appDataDir = ApplicationDataManager.Instance.ApplicationDataDirectory;
             SettingsFilePath = Path.Combine(appDataDir, "appsettings.json");
             BackupFilePath = SettingsFilePath + ".bak";
+            LegacySettingsFilePath = Path.Combine(appDataDir, "settings.json");
         }
+
+        /// <summary>
+        /// The file the removed SettingsManager wrote. Read once, when appsettings.json does not
+        /// exist yet, so an existing install keeps its excluded folders and its tray preference
+        /// instead of silently reverting to defaults on the upgrade.
+        /// </summary>
+        private static readonly string LegacySettingsFilePath;
+
+        /// <summary>Set by <see cref="TryLoadLegacy"/> so the migrated values are written forward once.</summary>
+        private static bool _migratedFromLegacy;
 
         /// <summary>
         /// One-generation backup of the previous good settings file, written
@@ -50,7 +61,20 @@ namespace AnythingSearch.Services
                 {
                     lock (Lock)
                     {
-                        _current ??= Load();
+                        if (_current == null)
+                        {
+                            _current = Load();
+
+                            // Write a migrated legacy file forward here rather than inside
+                            // Load(): Save() serializes Current, so calling it before _current
+                            // is assigned would re-enter this getter, call Load() again, and
+                            // recurse until the stack ran out.
+                            if (_migratedFromLegacy)
+                            {
+                                _migratedFromLegacy = false;
+                                Save();
+                            }
+                        }
                     }
                 }
                 return _current;
@@ -67,6 +91,11 @@ namespace AnythingSearch.Services
                     string json = File.ReadAllText(SettingsFilePath);
                     return JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
                 }
+
+                // No settings of our own yet - an existing install may still have the file the
+                // old SettingsManager wrote.
+                var legacy = TryLoadLegacy();
+                if (legacy != null) return legacy;
             }
             catch (Exception ex)
             {
@@ -94,6 +123,34 @@ namespace AnythingSearch.Services
             }
 
             return new AppSettings();
+        }
+
+        /// <summary>
+        /// Read the settings file the removed SettingsManager wrote, so an upgrading install
+        /// keeps its customised excluded folders, its throttle tuning and its tray preference.
+        /// Returns null when there is nothing to migrate. The legacy file is left in place - it
+        /// is only consulted when appsettings.json is absent, so it is harmless.
+        /// </summary>
+        private static AppSettings? TryLoadLegacy()
+        {
+            try
+            {
+                if (!File.Exists(LegacySettingsFilePath)) return null;
+
+                var legacy = JsonSerializer.Deserialize<AppSettings>(
+                    File.ReadAllText(LegacySettingsFilePath), JsonOptions);
+
+                if (legacy == null) return null;
+
+                _migratedFromLegacy = true;
+                Logger.Log("Settings migrated from the legacy settings.json.");
+                return legacy;
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Legacy settings could not be migrated - using defaults: {ex.Message}");
+                return null;
+            }
         }
 
         /// <summary>Saves the current settings to disk (atomically, with a one-generation backup).</summary>

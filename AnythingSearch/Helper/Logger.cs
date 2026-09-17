@@ -24,20 +24,51 @@ namespace AnythingSearch.Helper
 
         private static readonly object Gate = new();
 
-        /// <summary>
-        /// Resolved on first write, not at type load. ApplicationDataManager logs through this
-        /// class while it is bootstrapping, and asking it for a directory from a static field
-        /// initializer made the two types initialize each other - which its Lazy instance
-        /// rejects. A failed attempt leaves this null, so the next write simply tries again.
-        /// </summary>
+        /// <summary>Resolved on first write and cached for the life of the process.</summary>
         private static string? _logDirectory;
+
+        /// <summary>
+        /// Set while this class is asking ApplicationDataManager where to write.
+        ///
+        /// ApplicationDataManager logs through Logger, including from inside the very call that
+        /// creates the Logs folder ("Created subdirectory: Logs"). That inner call would ask for
+        /// the directory again - it is not cached yet - and recurse until the stack ran out. Its
+        /// own try/catch cannot help: a StackOverflowException cannot be caught, which is why
+        /// this showed up as the process dying rather than as a lost log entry.
+        ///
+        /// Thread-static, so a genuine log call on another thread is never dropped just because
+        /// this one happens to be resolving.
+        /// </summary>
+        [ThreadStatic]
+        private static bool _resolvingDirectory;
 
         private static bool _purged;
 
-        private static string LogDirectory =>
-            _logDirectory ??= ApplicationDataManager.Instance.LogsDirectory;
+        /// <summary>
+        /// The log directory, or null when it cannot be resolved right now - either because
+        /// ApplicationDataManager failed, or because the caller IS ApplicationDataManager telling
+        /// us about the folder we are in the middle of asking for. Failing leaves the cache empty
+        /// so the next write tries again.
+        /// </summary>
+        private static string? TryGetLogDirectory()
+        {
+            if (_logDirectory != null) return _logDirectory;
+            if (_resolvingDirectory) return null;
 
-        private static string LogPath => Path.Combine(LogDirectory, "app_log.txt");
+            _resolvingDirectory = true;
+            try
+            {
+                return _logDirectory = ApplicationDataManager.Instance.LogsDirectory;
+            }
+            catch
+            {
+                return null;
+            }
+            finally
+            {
+                _resolvingDirectory = false;
+            }
+        }
 
         // ─────────────────────────────────────────────────────────────────────
         // WRITE
@@ -57,6 +88,9 @@ namespace AnythingSearch.Helper
         {
             try
             {
+                string? directory = TryGetLogDirectory();
+                if (directory == null) return;
+
                 string entry =
                     $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {level}: {text}{Environment.NewLine}";
 
@@ -67,11 +101,11 @@ namespace AnythingSearch.Helper
                     if (!_purged)
                     {
                         _purged = true;
-                        PurgeLegacyFiles();
+                        PurgeLegacyFiles(directory);
                     }
 
-                    RollIfOversized();
-                    File.AppendAllText(LogPath, entry);
+                    RollIfOversized(directory);
+                    File.AppendAllText(LivePath(directory), entry);
                 }
             }
             catch
@@ -89,16 +123,19 @@ namespace AnythingSearch.Helper
         /// falls off the end, so the Logs folder stays bounded at roughly
         /// (Generations + 1) × MaxBytes. Called under <see cref="Gate"/>.
         /// </summary>
-        private static void RollIfOversized()
+        private static void RollIfOversized(string directory)
         {
-            var live = new FileInfo(LogPath);
+            var live = new FileInfo(LivePath(directory));
 
             if (!live.Exists || live.Length < MaxBytes) return;
 
             for (int generation = Generations; generation >= 1; generation--)
             {
-                string source = generation == 1 ? LogPath : GenerationPath(generation - 1);
-                string destination = GenerationPath(generation);
+                string source = generation == 1
+                    ? LivePath(directory)
+                    : GenerationPath(directory, generation - 1);
+
+                string destination = GenerationPath(directory, generation);
 
                 if (!File.Exists(source)) continue;
 
@@ -108,8 +145,11 @@ namespace AnythingSearch.Helper
             }
         }
 
-        private static string GenerationPath(int generation) =>
-            Path.Combine(LogDirectory, $"app_log.{generation}.txt");
+        private static string LivePath(string directory) =>
+            Path.Combine(directory, "app_log.txt");
+
+        private static string GenerationPath(string directory, int generation) =>
+            Path.Combine(directory, $"app_log.{generation}.txt");
 
         // ─────────────────────────────────────────────────────────────────────
         // LEGACY FILES
@@ -124,13 +164,13 @@ namespace AnythingSearch.Helper
         /// Runs once per process on the first write, not once per install: re-checking costs
         /// a File.Exists on start-up and needs no upgrade flag to be kept in sync.
         /// </summary>
-        private static void PurgeLegacyFiles()
+        private static void PurgeLegacyFiles(string directory)
         {
             foreach (string name in new[] { "exception.log", "startup.log" })
             {
                 try
                 {
-                    string path = Path.Combine(LogDirectory, name);
+                    string path = Path.Combine(directory, name);
 
                     if (File.Exists(path)) File.Delete(path);
                 }

@@ -9,6 +9,7 @@ public class AppSettings
         "bin",
         "node_modules",
         ".git",
+        ".github",
         ".vs",
         ".idea",
         ".vscode",
