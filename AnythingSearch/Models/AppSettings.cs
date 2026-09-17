@@ -4,24 +4,38 @@ public class AppSettings
 {
     public List<string> ExcludedFolders { get; set; } = new()
     {
+        // Development / Build
         "obj",
         "bin",
         "node_modules",
         ".git",
         ".vs",
+        ".idea",
+        ".vscode",
         "packages",
+
+        // Package / Dependency Caches
+        "AppData\\Local\\NuGet",
+        "AppData\\Local\\npm-cache",
+        "AppData\\Roaming\\npm-cache",
+        "AppData\\Local\\Yarn",
+        "AppData\\Local\\pnpm-store",
+
+        // Windows / System
         "$RECYCLE.BIN",
         "System Volume Information",
         "Windows\\WinSxS",
+
+        // Temporary / Cache / Crash Data
         "AppData\\Local\\Temp",
+        "AppData\\Local\\CrashDumps",
+        "AppData\\Local\\D3DSCache",
+        "AppData\\Local\\Microsoft\\Windows\\INetCache",
 
-        //dev test folders
-        //"C:\\Windows",
-        //"E:\\Personal Galary",
-        //"G:\\Personal Gallery-2",
-        //"C:\\Users\\Public\\src",
-        //"G:\\TheGitCloning"
-
+        // Browser Data
+        "AppData\\Local\\Microsoft\\Edge\\User Data",
+        "AppData\\Local\\Google\\Chrome\\User Data",
+        "AppData\\Local\\Packages"
     };
 
     public List<string> ExcludedExtensions { get; set; } = new()
