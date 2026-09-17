@@ -76,7 +76,6 @@ namespace AnythingSearch.Helper
             }
         }
 
-        private static string Normalize(string path) =>
-            Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar);
+        private static string Normalize(string path) => Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar);
     }
 }

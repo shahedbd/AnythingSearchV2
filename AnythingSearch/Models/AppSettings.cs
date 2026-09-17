@@ -47,7 +47,6 @@ public class AppSettings
     };
 
     public bool IndexSystemDrive { get; set; } = true;
-    public int BatchSize { get; set; } = 5000;
 
     /// <summary>
     /// How many scan units are walked at the same time within one drive. Deliberately low:
@@ -76,12 +75,6 @@ public class AppSettings
     public int LargeScopeSegmentItems { get; set; } = 500_000;
 
     /// <summary>
-    /// Flag to track if this is the first time the app is running.
-    /// When true, the app will automatically start indexing.
-    /// </summary>
-    public bool IsFirstRun { get; set; } = true;
-
-    /// <summary>
     /// Start the app automatically when Windows starts
     /// </summary>
     public bool StartWithWindows { get; set; } = false;
@@ -100,5 +93,4 @@ public class AppSettings
     public DateTime? LastPromotionDate { get; set; } = null;
     public int PromotionCount { get; set; }
     public bool IsNewInstallation { get; set; } = true;
-    public DateTime AppStartTime { get; set; } = new(2023, 8, 5, 21, 33, 0);
 }

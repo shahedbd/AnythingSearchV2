@@ -9,6 +9,23 @@ C:\Users\Public\src\MS_Store_App\AnythingSearch\Doc\Requirements
 - Preserve existing behavior unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
+Review this code: /DeviceData/AppStartupService.cs
+ var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AnythingSearch");
+bool _IsNewInstallation = Directory.Exists(path) ? true : false;
+
+Previously we done it by: 
+//bool _IsNewInstallation = SettingsService.Current.AppVersion == 0 ? true : false;
+
+- Keep files small: Target ≤300 lines; 400 lines absolute maximum. Split large files into focused modules.
+- Skip build, test, publish, deployment, migration, and package commands unless explicitly requested; I will handle them.
+- Optimize token usage: inspect only relevant files and make the smallest necessary changes.
+- Follow the existing architecture, documentation, patterns, naming conventions, and coding style.
+- Reuse existing code and dependencies; avoid unnecessary refactoring or new dependencies.
+- Preserve existing behavior unless the task requires otherwise.
+- Keep responses concise and report only important changes, affected files, and caveats.
+
+
+
 Now review and update:
 G:\src\MS_Store_App\AnythingSearchV2\AnythingSearch\AnythingSearch.csproj
 G:\src\MS_Store_App\AnythingSearchV2\WinAppPakaging\WinAppPakaging.wapproj
@@ -26,13 +43,7 @@ Copy and update : G:\src\MS_Store_App\NetSpeedMeterPlus\build-store-package_NSM_
 
 
 
-- Keep files small: Target ≤300 lines; 400 lines absolute maximum. Split large files into focused modules.
-- Skip build, test, publish, deployment, migration, and package commands unless explicitly requested; I will handle them.
-- Optimize token usage: inspect only relevant files and make the smallest necessary changes.
-- Follow the existing architecture, documentation, patterns, naming conventions, and coding style.
-- Reuse existing code and dependencies; avoid unnecessary refactoring or new dependencies.
-- Preserve existing behavior unless the task requires otherwise.
-- Keep responses concise and report only important changes, affected files, and caveats.
+
 
 
 
