@@ -9,6 +9,52 @@ C:\Users\Public\src\MS_Store_App\NetSpeedMeterPlus\Doc\Requirements
 - Preserve existing behavior unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
+Now improve OS drive indedx divide into sub phase:
+{
+      "Key": "os:C:\\",
+      "Phase": "SystemDrive",
+      "Drive": "C:\\",
+      "Status": "Completed",
+      "StartedAt": "2026-09-17T14:21:30.4886712+06:00",
+      "CompletedAt": "2026-09-17T14:21:52.2161103+06:00",
+      "Files": 541277,
+      "Folders": 97897,
+      "LastCheckpoint": "C:\\",
+      "CompletedUnits": [],
+      "Error": null,
+      "FailedUnits": []
+    }
+
+OS Drive Phase 01: Users
+OS Drive Phase 02: Program Files (x86)
+OS Drive Phase 03: Program Files
+OS Drive Phase 04: Windows
+OS Drive Phase 05: Rest of directory
+
+
+Sample my local PC data:
+Windows: 150,910 Files, 59,995 Folders
+Program Files (x86): 74,284 Files, 19,489 Folders
+Program Files: 187,652 Files, 29,685 Folders
+Users: 376,917 Files, 76,938 Folders
+
+As app has 100k+ desktop users, so user may not have this folder structure, make sure dynamic OS Drive sub phase process.
+
+
+- Keep files small: Target ≤300 lines; 400 lines absolute maximum. Split large files into focused modules.
+- Skip build, test, publish, deployment, migration, and package commands unless explicitly requested; I will handle them.
+- Optimize token usage: inspect only relevant files and make the smallest necessary changes.
+- Follow the existing architecture, documentation, patterns, naming conventions, and coding style.
+- Reuse existing code and dependencies; avoid unnecessary refactoring or new dependencies.
+- Preserve existing behavior unless the task requires otherwise.
+- Keep responses concise and report only important changes, affected files, and caveats.
+
+
+
+
+
+
+
 Issue 01: Freash app start-up takes too much time for my current hard disk data indexing. I have two hard disk one SSD for OS and another one general HDD.
 App got hang, my disk shows using 100%. Some time it goes 30 minutes more.
 Total folders files around: 3.5 millions
