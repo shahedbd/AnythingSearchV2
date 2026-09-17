@@ -1,4 +1,5 @@
 ﻿using AnythingSearch.Helper;
+using AnythingSearch.Services;
 
 namespace DeviceDataModule
 {

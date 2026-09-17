@@ -9,6 +9,29 @@ C:\Users\Public\src\MS_Store_App\AnythingSearch\Doc\Requirements
 - Preserve existing behavior unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
+Improve and use it entire project: /Helper/AppConfig
+Remove: /Services/SettingsManager and use it: /Services/SettingsService
+Use logger: /Helper/Logger
+
+
+Also, you can use more common code from this latest project: (if needed)
+G:\src\MS_Store_App\NetSpeedMeterPlus\NetSpeedMeterPlus
+
+- Keep files small: Target ≤300 lines; 400 lines absolute maximum. Split large files into focused modules.
+- Skip build, test, publish, deployment, migration, and package commands unless explicitly requested; I will handle them.
+- Optimize token usage: inspect only relevant files and make the smallest necessary changes.
+- Follow the existing architecture, documentation, patterns, naming conventions, and coding style.
+- Reuse existing code and dependencies; avoid unnecessary refactoring or new dependencies.
+- Preserve existing behavior unless the task requires otherwise.
+- Keep responses concise and report only important changes, affected files, and caveats.
+
+
+
+
+
+
+
+
 For phase1:priority, add only:
 Downloads directory
 
@@ -44,13 +67,7 @@ For a bigger size drive can we make dynamic sub phase?
 For a bigger size drive can we make dynamic sub phase?
 -if files+dir > 500k
 
-- Keep files small: Target ≤300 lines; 400 lines absolute maximum. Split large files into focused modules.
-- Skip build, test, publish, deployment, migration, and package commands unless explicitly requested; I will handle them.
-- Optimize token usage: inspect only relevant files and make the smallest necessary changes.
-- Follow the existing architecture, documentation, patterns, naming conventions, and coding style.
-- Reuse existing code and dependencies; avoid unnecessary refactoring or new dependencies.
-- Preserve existing behavior unless the task requires otherwise.
-- Keep responses concise and report only important changes, affected files, and caveats.
+
 
 
 

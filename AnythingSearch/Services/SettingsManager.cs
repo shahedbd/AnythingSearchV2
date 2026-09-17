@@ -12,9 +12,7 @@ public class SettingsManager
 
     public SettingsManager()
     {
-        var appData = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "AnythingSearch");
+        var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"AnythingSearch");
 
         Directory.CreateDirectory(appData);
         _settingsPath = Path.Combine(appData, "settings.json");

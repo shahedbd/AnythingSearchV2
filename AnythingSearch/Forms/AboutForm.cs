@@ -1,4 +1,5 @@
 ﻿using AnythingSearch.Database;
+using AnythingSearch.Helper;
 using System.Diagnostics;
 using System.Reflection;
 
@@ -112,7 +113,7 @@ public partial class AboutForm : Form
         int badgeHeight = Scale(24);
         Label lblVersion = new Label
         {
-            Text = $"Version {CommonData.ApplicationVersion}",
+            Text = AppConfig.AppVersion,
             Font = new Font("Segoe UI", 9, FontStyle.Bold),
             ForeColor = Color.White,
             BackColor = PrimaryColor,

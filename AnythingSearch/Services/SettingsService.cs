@@ -1,9 +1,10 @@
 using AnythingSearch.Helper;
 using AnythingSearch.Models;
+using DeviceDataModule;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace DeviceDataModule
+namespace AnythingSearch.Services
 {
     /// <summary>
     /// Persists AppSettings as appsettings.json in the app-data directory

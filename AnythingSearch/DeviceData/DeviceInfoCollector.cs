@@ -9,6 +9,7 @@ using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using AnythingSearch.Helper;
+using AnythingSearch.Services;
 
 namespace DeviceDataModule
 {
