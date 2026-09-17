@@ -22,6 +22,11 @@ public partial class BackgroundIndexingService
     {
         if (cancellationToken.IsCancellationRequested) return;
 
+        // A unit's own root is checked here as well as when subdirectories are queued: the
+        // planner can hand out a junction as a unit root (C:\Users is full of them), and
+        // walking it would index a tree that is already indexed under its real path.
+        if (IndexPlanner.IsSkippable(root.Directory)) return;
+
         var writer = _channel!.Writer;
         var throttleBatch = Math.Max(0, _settingsManager.Settings.IndexThrottleBatchSize);
         var throttleDelay = Math.Max(0, _settingsManager.Settings.IndexThrottleDelayMs);
@@ -134,14 +139,9 @@ public partial class BackgroundIndexingService
 
                 try
                 {
-                    if (IndexPlanner.IsSystemHidden(subDirectory)) continue;
+                    if (IndexPlanner.IsSkippable(subDirectory)) continue;
                     if (_planner.IsExcluded(subDirectory.FullName)) continue;
                     if (IsSkipped(subDirectory.FullName, skipDirectories)) continue;
-
-                    // Reparse points (junctions, symlinks) are how a walk ends up in an infinite
-                    // loop or indexing the same tree under two names.
-                    if ((subDirectory.Attributes & FileAttributes.ReparsePoint) == FileAttributes.ReparsePoint)
-                        continue;
 
                     directoryStack.Push(subDirectory);
                 }

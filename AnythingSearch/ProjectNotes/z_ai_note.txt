@@ -9,7 +9,23 @@ C:\Users\Public\src\MS_Store_App\NetSpeedMeterPlus\Doc\Requirements
 - Preserve existing behavior unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
-Now improve OS drive indedx divide into sub phase:
+For a bigger size drive can we make dynamic sub phase?
+-if files+dir > 500k
+
+- Keep files small: Target ≤300 lines; 400 lines absolute maximum. Split large files into focused modules.
+- Skip build, test, publish, deployment, migration, and package commands unless explicitly requested; I will handle them.
+- Optimize token usage: inspect only relevant files and make the smallest necessary changes.
+- Follow the existing architecture, documentation, patterns, naming conventions, and coding style.
+- Reuse existing code and dependencies; avoid unnecessary refactoring or new dependencies.
+- Preserve existing behavior unless the task requires otherwise.
+- Keep responses concise and report only important changes, affected files, and caveats.
+
+
+
+
+
+
+Now improve OS drive index divide into sub phase:
 {
       "Key": "os:C:\\",
       "Phase": "SystemDrive",
@@ -40,14 +56,6 @@ Users: 376,917 Files, 76,938 Folders
 
 As app has 100k+ desktop users, so user may not have this folder structure, make sure dynamic OS Drive sub phase process.
 
-
-- Keep files small: Target ≤300 lines; 400 lines absolute maximum. Split large files into focused modules.
-- Skip build, test, publish, deployment, migration, and package commands unless explicitly requested; I will handle them.
-- Optimize token usage: inspect only relevant files and make the smallest necessary changes.
-- Follow the existing architecture, documentation, patterns, naming conventions, and coding style.
-- Reuse existing code and dependencies; avoid unnecessary refactoring or new dependencies.
-- Preserve existing behavior unless the task requires otherwise.
-- Keep responses concise and report only important changes, affected files, and caveats.
 
 
 

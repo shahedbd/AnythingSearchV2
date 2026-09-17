@@ -146,7 +146,7 @@ public partial class BackgroundIndexingService
                 {
                     try
                     {
-                        if (IndexPlanner.IsSystemHidden(subDir)) continue;
+                        if (IndexPlanner.IsSkippable(subDir)) continue;
                         if (_planner.IsExcluded(subDir.FullName)) continue;
 
                         stack.Push(subDir);

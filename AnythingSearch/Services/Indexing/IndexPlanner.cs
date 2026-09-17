@@ -15,8 +15,14 @@ internal readonly record struct ScanRoot(DirectoryInfo Directory, bool Recursive
                          Directory.FullName.TrimEnd(Path.DirectorySeparatorChar);
 }
 
-/// <summary>One scope of the plan: phase 1 as a whole, or a single drive.</summary>
-internal sealed record IndexScopeDefinition(string Key, IndexPhase Phase, string Drive, string Label);
+/// <summary>
+/// One scope of the plan: phase 1 as a whole, a single data drive, or one sub-phase of the OS
+/// drive. <c>Root</c> is null for a whole drive, <see cref="IndexPlanner.RestOfDrive"/>
+/// for "everything on the OS drive that no earlier sub-phase covered", and otherwise the single
+/// directory the scope covers.
+/// </summary>
+internal sealed record IndexScopeDefinition(
+    string Key, IndexPhase Phase, string Drive, string Label, string? Root = null);
 
 /// <summary>
 /// Decides what gets indexed, in what order, and in what checkpointable units.
@@ -24,9 +30,10 @@ internal sealed record IndexScopeDefinition(string Key, IndexPhase Phase, string
 /// Phase 1 is Downloads plus the directories holding recently used files, so the app becomes
 /// searchable within seconds. Phase 2 is every non-OS fixed drive, one scope per drive so each
 /// one publishes as soon as it finishes. Phase 3 is the OS drive, which is both the largest and
-/// the least interesting to search, so it goes last.
+/// the least interesting to search, so it goes last - and is itself split into sub-phases
+/// (see IndexPlanner.SystemDrive.cs) so a 600,000-entry drive publishes in stages.
 /// </summary>
-internal sealed class IndexPlanner
+internal sealed partial class IndexPlanner
 {
     /// <summary>A top-level directory with more subdirectories than this is split into them.</summary>
     private const int SplitThreshold = 4;
@@ -59,7 +66,7 @@ internal sealed class IndexPlanner
         }
 
         if (_settingsManager.Settings.IndexSystemDrive)
-            scopes.Add(new($"os:{osDrive}", IndexPhase.SystemDrive, osDrive, $"System drive {osDrive}"));
+            scopes.AddRange(BuildSystemDriveScopes(osDrive));
 
         return scopes;
     }
@@ -86,6 +93,7 @@ internal sealed class IndexPlanner
     public List<ScanRoot> ExpandUnits(IndexScopeDefinition scope) => scope.Phase switch
     {
         IndexPhase.Priority => ExpandPriorityUnits(),
+        IndexPhase.SystemDrive => ExpandSystemDriveUnits(scope),
         _ => ExpandDriveUnits(scope.Drive)
     };
 
@@ -119,7 +127,11 @@ internal sealed class IndexPlanner
     /// subdirectories to be worth checkpointing separately, plus the drive root for the files
     /// sitting directly on it.
     /// </summary>
-    private List<ScanRoot> ExpandDriveUnits(string driveName)
+    /// <param name="skipTopLevel">
+    /// Normalized top-level directories to leave out, used by the OS drive's final sub-phase so
+    /// it covers only what the named sub-phases before it did not.
+    /// </param>
+    private List<ScanRoot> ExpandDriveUnits(string driveName, ISet<string>? skipTopLevel = null)
     {
         var units = new List<ScanRoot>();
 
@@ -131,7 +143,8 @@ internal sealed class IndexPlanner
         try
         {
             topLevel = root.GetDirectories()
-                .Where(d => !IsExcluded(d.FullName) && !IsSystemHidden(d))
+                .Where(d => !IsExcluded(d.FullName) && !IsSkippable(d) &&
+                            (skipTopLevel == null || !skipTopLevel.Contains(Normalize(d.FullName))))
                 .ToList();
         }
         catch
@@ -166,7 +179,7 @@ internal sealed class IndexPlanner
 
             foreach (var subDirectory in subDirectories)
             {
-                if (!IsExcluded(subDirectory.FullName) && !IsSystemHidden(subDirectory))
+                if (!IsExcluded(subDirectory.FullName) && !IsSkippable(subDirectory))
                     units.Add(new ScanRoot(subDirectory, true));
             }
 
@@ -245,12 +258,25 @@ internal sealed class IndexPlanner
         return _settingsManager.Settings.ExcludedExtensions.Contains(ext);
     }
 
-    /// <summary>System + hidden directories are Windows plumbing, never user content.</summary>
-    public static bool IsSystemHidden(DirectoryInfo directory)
+    /// <summary>
+    /// Directories the walk must not enter.
+    ///
+    /// System + hidden together is Windows plumbing, never user content. Reparse points
+    /// (junctions and symlinks) are excluded because they are a second name for a tree that is
+    /// already indexed under its real path - following one means the same files appear twice
+    /// under different paths, which the unique (FolderId, Name) index cannot catch, and a
+    /// self-referencing one means the walk never ends. C:\Users alone ships several
+    /// ("All Users", "Default User"), which is why this matters most to the OS-drive sub-phases.
+    /// </summary>
+    public static bool IsSkippable(DirectoryInfo directory)
     {
         try
         {
             var attributes = directory.Attributes;
+
+            if ((attributes & FileAttributes.ReparsePoint) == FileAttributes.ReparsePoint)
+                return true;
+
             return (attributes & FileAttributes.System) == FileAttributes.System &&
                    (attributes & FileAttributes.Hidden) == FileAttributes.Hidden;
         }
