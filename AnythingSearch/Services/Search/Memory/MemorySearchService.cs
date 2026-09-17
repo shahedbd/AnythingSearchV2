@@ -32,6 +32,7 @@ public sealed class MemorySearchService : IDisposable
     private volatile Delta? _publishedDelta = Delta.Empty;
 
     private int _rebuildInFlight;   // 0 = idle, 1 = building
+    private int _rebuildQueued;     // a rebuild was asked for while one was already running
     private volatile bool _disposed;
 
     /// <summary>Rebuild once this many pending changes have accumulated.</summary>
@@ -272,7 +273,15 @@ public sealed class MemorySearchService : IDisposable
     public void RequestRebuild(string reason)
     {
         if (_disposed) return;
-        if (Interlocked.CompareExchange(ref _rebuildInFlight, 1, 0) != 0) return;
+
+        if (Interlocked.CompareExchange(ref _rebuildInFlight, 1, 0) != 0)
+        {
+            // Remember it instead of dropping it. Phased indexing publishes one drive after
+            // another, so a request landing mid-rebuild is normal - and losing it would leave
+            // that drive out of the snapshot until something else happened to trigger a rebuild.
+            Interlocked.Exchange(ref _rebuildQueued, 1);
+            return;
+        }
 
         _rebuildTimer.Change(Timeout.Infinite, Timeout.Infinite);
 
@@ -337,6 +346,9 @@ public sealed class MemorySearchService : IDisposable
             {
                 _firstSnapshot.TrySetResult();
                 Volatile.Write(ref _rebuildInFlight, 0);
+
+                if (Interlocked.Exchange(ref _rebuildQueued, 0) == 1)
+                    RequestRebuild("changes arrived during the previous rebuild");
             }
         });
     }

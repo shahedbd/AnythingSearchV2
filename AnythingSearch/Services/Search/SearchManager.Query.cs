@@ -9,14 +9,16 @@ namespace AnythingSearch.Services;
 /// 1. The in-memory index (<see cref="Search.Memory.MemorySearchService"/>) - a vectorised scan of
 ///    the packed name blob, typically a few milliseconds regardless of index size.
 /// 2. SQLite - used while the snapshot is still loading, and if it ever fails to load.
-/// 3. Windows Search - used before the local database exists, or if SQLite keeps failing.
 ///
-/// IMPORTANT: neither Microsoft.Data.Sqlite nor the OLE DB provider used for Windows Search
-/// implement real asynchronous I/O - their *Async methods run synchronously on the calling
-/// thread. Awaiting them straight from the UI thread froze the search box while the query ran.
-/// Those queries therefore run on a thread-pool thread so the message pump (and typing) stays
-/// live. The in-memory search is fast enough that only its parallel scan leaves the caller's
-/// thread, which is why it can answer inside a single keystroke.
+/// There is no third source: Windows Search used to sit behind these as a fallback, but the app
+/// no longer depends on it. Before the first indexing phase publishes there is simply nothing to
+/// search, and the UI says so (see <see cref="SearchManager.IsSearchLocked"/>).
+///
+/// IMPORTANT: Microsoft.Data.Sqlite does not implement real asynchronous I/O - its *Async methods
+/// run synchronously on the calling thread. Awaiting them straight from the UI thread froze the
+/// search box while the query ran. Those queries therefore run on a thread-pool thread so the
+/// message pump (and typing) stays live. The in-memory search is fast enough that only its
+/// parallel scan leaves the caller's thread, which is why it can answer inside a single keystroke.
 /// </summary>
 public partial class SearchManager
 {
@@ -42,6 +44,11 @@ public partial class SearchManager
         if (string.IsNullOrWhiteSpace(query))
             return (new List<FileEntry>(), 0, CurrentSource);
 
+        // Nothing has been published yet - the UI keeps the search box disabled in this state,
+        // so this is only a guard against a query that was already in flight.
+        if (IsSearchLocked)
+            return (new List<FileEntry>(), 0, SearchSource.None);
+
         // Fastest path: everything is already in RAM.
         if (_memorySearch.IsReady)
         {
@@ -62,64 +69,31 @@ public partial class SearchManager
             }
         }
 
-        // Use SQLite if ready, otherwise Windows Search
-        if (_useSqlite)
+        try
         {
-            try
-            {
-                var results = await RunSqliteSearchAsync(query, maxResults, cancellationToken);
-                _consecutiveSqliteFailures = 0;
-                return (results, results.Count, SearchSource.SQLite);
-            }
-            catch (OperationCanceledException)
-            {
-                throw; // Superseded by a newer keystroke - not a SQLite failure
-            }
-            catch (Exception ex)
-            {
-                _consecutiveSqliteFailures++;
-                StatusChanged?.Invoke($"SQLite search failed: {ex.Message}, falling back to Windows Search");
-
-                // If SQLite keeps failing (e.g. a corrupted database), stop retrying it on every
-                // keystroke and switch the active source until the index is rebuilt.
-                if (_consecutiveSqliteFailures >= MaxConsecutiveSqliteFailures)
-                {
-                    _useSqlite = false;
-                    SearchSourceChanged?.Invoke(CurrentSource);
-                    StatusChanged?.Invoke("SQLite search failed repeatedly - switched to Windows Search. Rebuild the index to restore the local database.");
-                }
-
-                // Fall back to Windows Search
-                if (_windowsSearchAvailable)
-                {
-                    var fallbackResults = await RunWindowsSearchAsync(query, maxResults, cancellationToken);
-                    return (fallbackResults, fallbackResults.Count, SearchSource.WindowsSearch);
-                }
-
-                return (new List<FileEntry>(), 0, SearchSource.SQLite);
-            }
+            var results = await RunSqliteSearchAsync(query, maxResults, cancellationToken);
+            _consecutiveSqliteFailures = 0;
+            return (results, results.Count, SearchSource.SQLite);
         }
-        else if (_windowsSearchAvailable)
+        catch (OperationCanceledException)
         {
-            var results = await RunWindowsSearchAsync(query, maxResults, cancellationToken);
-            return (results, results.Count, SearchSource.WindowsSearch);
+            throw; // Superseded by a newer keystroke - not a SQLite failure
         }
-        else
+        catch (Exception ex)
         {
-            // Neither available - try SQLite anyway (might have partial data)
-            try
+            _consecutiveSqliteFailures++;
+            StatusChanged?.Invoke($"Search failed: {ex.Message}");
+
+            // If SQLite keeps failing (e.g. a corrupted database), stop retrying it on every
+            // keystroke and tell the user the index needs rebuilding.
+            if (_consecutiveSqliteFailures >= MaxConsecutiveSqliteFailures)
             {
-                var results = await RunSqliteSearchAsync(query, maxResults, cancellationToken);
-                return (results, results.Count, SearchSource.SQLite);
+                _useSqlite = false;
+                SearchSourceChanged?.Invoke(CurrentSource);
+                StatusChanged?.Invoke("The local database keeps failing - rebuild the index to restore search.");
             }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch
-            {
-                return (new List<FileEntry>(), 0, SearchSource.None);
-            }
+
+            return (new List<FileEntry>(), 0, SearchSource.None);
         }
     }
 
@@ -164,11 +138,4 @@ public partial class SearchManager
             _searchGate.Release();
         }
     }
-
-    /// <summary>
-    /// Run the Windows Search (OLE DB) query on a thread-pool thread.
-    /// </summary>
-    private Task<List<FileEntry>> RunWindowsSearchAsync(
-        string query, int maxResults, CancellationToken cancellationToken)
-        => Task.Run(() => _windowsSearch.SearchAsync(query, maxResults, cancellationToken), cancellationToken);
 }

@@ -17,7 +17,8 @@ namespace AnythingSearch.Database;
 /// - Prepared statements with parameter reuse
 /// - Large batch inserts
 /// - Aggressive SQLite PRAGMA settings
-/// - Indexes created AFTER bulk insert
+/// - Search indexes created AFTER bulk insert (the uniqueness index has to exist during it -
+///   see PrepareForBulkIndexingAsync)
 /// </summary>
 public partial class FileDatabase : IDisposable
 {
@@ -27,24 +28,29 @@ public partial class FileDatabase : IDisposable
 
     // Thread-safe pending inserts
     private readonly ConcurrentBag<FileEntry> _pendingInserts = new();
-    private readonly object _flushLock = new();
+
+    // 0 = idle, 1 = a flush is running. An int flag rather than a Monitor lock: the flush now
+    // awaits the connection gate, and a Monitor lock cannot be released on a different thread
+    // than the one that took it - which is exactly what happens after an await.
+    private int _flushing;
     private const int BulkInsertThreshold = 10000;
 
     // Folder path cache (path -> id) for normalized storage
     private readonly ConcurrentDictionary<string, long> _folderCache = new(StringComparer.OrdinalIgnoreCase);
-    private long _nextFolderId = 1;
     private readonly object _folderLock = new();
 
     // Prepared statements
     private SqliteCommand? _insertFileCommand;
     private SqliteCommand? _insertFolderCommand;
+    private SqliteCommand? _selectFolderCommand;
     private bool _inTransaction = false;
 
-    // One shared SqliteConnection is used by the search box, the file watcher and the index
-    // catch-up pass, all on different threads. SQLite will not let the same connection write to
-    // a table while one of its own readers is still open ("database table is locked"), so every
-    // runtime operation is serialized through this gate. The bulk index build is not gated:
-    // it owns the database exclusively while it runs.
+    // One shared SqliteConnection is used by the search box, the file watcher, the index
+    // catch-up pass and the index build, all on different threads. SQLite will not let the same
+    // connection write to a table while one of its own readers is still open ("database table is
+    // locked"), so every operation is serialized through this gate - including the bulk build,
+    // which no longer owns the database exclusively now that phases publish while later ones
+    // are still running.
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     private async Task<IDisposable> LockAsync(CancellationToken cancellationToken = default)
@@ -147,21 +153,49 @@ public partial class FileDatabase : IDisposable
         await ExecuteNonQueryAsync("PRAGMA busy_timeout = 5000");
     }
 
-    /// <summary>Throughput settings for the bulk build, which owns the database while it runs.</summary>
+    /// <summary>
+    /// Throughput settings for a bulk build.
+    ///
+    /// locking_mode stays NORMAL, unlike the old rebuild-everything build: indexing now publishes
+    /// each phase as it finishes, so the in-memory index opens its read-only connection to this
+    /// same file while later phases are still writing, and EXCLUSIVE would lock it out. The page
+    /// cache is 64 MB rather than 256 MB for the same reason - the process is answering searches
+    /// at the same time, and that memory is better spent on the search index.
+    /// </summary>
     private async Task ApplyBulkBuildSettingsAsync()
     {
         await ExecuteNonQueryAsync("PRAGMA synchronous = OFF");
-        await ExecuteNonQueryAsync("PRAGMA cache_size = -256000");
-        await ExecuteNonQueryAsync("PRAGMA mmap_size = 536870912");
-        await ExecuteNonQueryAsync("PRAGMA locking_mode = EXCLUSIVE");
+        await ExecuteNonQueryAsync("PRAGMA cache_size = -64000");
+        await ExecuteNonQueryAsync("PRAGMA mmap_size = 268435456");
+        await ExecuteNonQueryAsync("PRAGMA locking_mode = NORMAL");
+    }
+
+    /// <summary>
+    /// Get the database ready for a phased index build.
+    ///
+    /// The unique index on (FolderId, Name) is created BEFORE the inserts, not after. Phased
+    /// indexing writes into a database that already holds earlier phases, and a resumed run
+    /// re-walks the chunk that was in flight when it stopped, so INSERT OR IGNORE needs the index
+    /// in place to drop the repeats. That costs some insert throughput and buys resumability
+    /// without duplicates. The name and extension indexes are still built at the end, where they
+    /// are far cheaper.
+    /// </summary>
+    public async Task PrepareForBulkIndexingAsync()
+    {
+        using var dbLock = await LockAsync();
+        await ApplyBulkBuildSettingsAsync();
+        await ExecuteNonQueryAsync(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_files_folder_name_unique ON Files(FolderId, Name)");
+        await ExecuteNonQueryAsync("CREATE INDEX IF NOT EXISTS idx_folders_path ON Folders(Path)");
     }
 
     public async Task ClearAsync()
     {
+        using var dbLock = await LockAsync();
+
         // Clear caches
         while (_pendingInserts.TryTake(out _)) { }
         _folderCache.Clear();
-        _nextFolderId = 1;
 
         // Drop and recreate for fastest clear
         await ExecuteNonQueryAsync("DROP TABLE IF EXISTS Files");
@@ -188,24 +222,34 @@ public partial class FileDatabase : IDisposable
         await cmd.ExecuteNonQueryAsync();
     }
 
+    /// <summary>
+    /// Open a transaction for one chunk of the index build. Called once per chunk rather than
+    /// once per run: a chunk-sized transaction is what makes a checkpoint durable, so an
+    /// interrupted build keeps everything it had already committed.
+    /// </summary>
     public async Task BeginBatchAsync()
     {
-        // Only the bulk build takes the file exclusively, and only it gets the big page cache.
-        // Holding either for the whole session (which is what InitializeAsync used to do) locked
-        // out every other connection - including the read-only one the in-memory index is built
-        // from - and kept hundreds of megabytes of cache reserved for a database that is no
-        // longer on the search path.
-        await ApplyBulkBuildSettingsAsync();
+        using var dbLock = await LockAsync();
+
+        if (_inTransaction) return;
+
         await ExecuteNonQueryAsync("BEGIN TRANSACTION");
         _inTransaction = true;
 
-        // Prepare insert statements for reuse
+        // Folder ids are assigned by SQLite, not by a private counter: the Folders table now
+        // survives across phases and across restarts, so a counter starting at 1 would collide
+        // with rows written by an earlier phase.
         _insertFolderCommand = new SqliteCommand(
-            "INSERT INTO Folders (Id, Path) VALUES (@id, @path)",
+            "INSERT INTO Folders (Path) VALUES (@path); SELECT last_insert_rowid();",
             _connection);
-        _insertFolderCommand.Parameters.Add("@id", SqliteType.Integer);
         _insertFolderCommand.Parameters.Add("@path", SqliteType.Text);
         _insertFolderCommand.Prepare();
+
+        _selectFolderCommand = new SqliteCommand(
+            "SELECT Id FROM Folders WHERE Path = @path COLLATE NOCASE",
+            _connection);
+        _selectFolderCommand.Parameters.Add("@path", SqliteType.Text);
+        _selectFolderCommand.Prepare();
 
         // OR IGNORE, paired with the UNIQUE index on (FolderId, Name), is what keeps the same
         // entry from being stored twice when two scan roots happen to cover the same directory.
@@ -223,7 +267,10 @@ public partial class FileDatabase : IDisposable
 
     public async Task CommitBatchAsync()
     {
+        // Flush first, on its own: it takes the same gate, which is not reentrant.
         await FlushPendingInsertsAsync();
+
+        using var dbLock = await LockAsync();
 
         if (_inTransaction)
         {
@@ -233,8 +280,22 @@ public partial class FileDatabase : IDisposable
 
         _insertFileCommand?.Dispose();
         _insertFolderCommand?.Dispose();
+        _selectFolderCommand?.Dispose();
         _insertFileCommand = null;
         _insertFolderCommand = null;
+        _selectFolderCommand = null;
+    }
+
+    /// <summary>
+    /// Wrap up one scope (phase 1, or a single drive) before its data is published: fold the
+    /// write-ahead log back into the database file so the snapshot build that follows reads one
+    /// file instead of two. Deliberately cheap - ANALYZE and VACUUM wait for
+    /// <see cref="FinalizeIndexingAsync"/>, which runs once at the very end.
+    /// </summary>
+    public async Task FinalizeScopeAsync()
+    {
+        using var dbLock = await LockAsync();
+        await ExecuteNonQueryAsync("PRAGMA wal_checkpoint(TRUNCATE)");
     }
 
     /// <summary>
@@ -242,14 +303,13 @@ public partial class FileDatabase : IDisposable
     /// </summary>
     public async Task FinalizeIndexingAsync()
     {
-        // Create indexes (much faster after all data is inserted)
+        using var dbLock = await LockAsync();
+
+        // The unique index and idx_folders_path already exist - PrepareForBulkIndexingAsync needs
+        // them during the build. These two are only read by searches, so they are built last,
+        // where building them is far cheaper than maintaining them row by row.
         await ExecuteNonQueryAsync("CREATE INDEX IF NOT EXISTS idx_files_name ON Files(Name)");
-        // Also the uniqueness guarantee: one entry per name per folder, which is what the file
-        // system itself guarantees. Covers FolderId lookups too, so no separate index is needed.
-        await ExecuteNonQueryAsync(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_files_folder_name_unique ON Files(FolderId, Name)");
         await ExecuteNonQueryAsync("CREATE INDEX IF NOT EXISTS idx_files_ext ON Files(Ext)");
-        await ExecuteNonQueryAsync("CREATE INDEX IF NOT EXISTS idx_folders_path ON Folders(Path)");
 
         // Checkpoint WAL to merge into main database file
         await ExecuteNonQueryAsync("PRAGMA wal_checkpoint(TRUNCATE)");
@@ -297,17 +357,25 @@ public partial class FileDatabase : IDisposable
             if (_folderCache.TryGetValue(folderPath, out existingId))
                 return existingId;
 
-            var newId = _nextFolderId++;
-            _folderCache[folderPath] = newId;
-
-            // Insert folder into database
-            if (_insertFolderCommand != null)
+            // The folder may already be stored by an earlier phase or an earlier run, so the
+            // database is consulted before a new row is added. Only a genuine miss costs a query.
+            if (_selectFolderCommand != null)
             {
-                _insertFolderCommand.Parameters["@id"].Value = newId;
-                _insertFolderCommand.Parameters["@path"].Value = folderPath;
-                _insertFolderCommand.ExecuteNonQuery();
+                _selectFolderCommand.Parameters["@path"].Value = folderPath;
+                var found = _selectFolderCommand.ExecuteScalar();
+                if (found != null && found != DBNull.Value)
+                {
+                    var existing = Convert.ToInt64(found);
+                    _folderCache[folderPath] = existing;
+                    return existing;
+                }
             }
 
+            if (_insertFolderCommand == null) return 0;
+
+            _insertFolderCommand.Parameters["@path"].Value = folderPath;
+            var newId = Convert.ToInt64(_insertFolderCommand.ExecuteScalar());
+            _folderCache[folderPath] = newId;
             return newId;
         }
     }
@@ -317,11 +385,18 @@ public partial class FileDatabase : IDisposable
     /// </summary>
     private async Task FlushPendingInsertsAsync()
     {
-        if (!Monitor.TryEnter(_flushLock))
+        if (Interlocked.CompareExchange(ref _flushing, 1, 0) != 0)
             return;
 
         try
         {
+            // Bulk writes used to bypass the connection gate, because a full rebuild owned the
+            // database. Phased indexing publishes as it goes, so a search or a count can now
+            // reach the shared connection while a chunk is being written - and
+            // Microsoft.Data.Sqlite connections are not thread-safe. One gate acquisition per
+            // batch, not per row.
+            using var dbLock = await LockAsync();
+
             var items = new List<FileEntry>(BulkInsertThreshold + 1000);
             while (_pendingInserts.TryTake(out var entry))
             {
@@ -354,10 +429,8 @@ public partial class FileDatabase : IDisposable
         }
         finally
         {
-            Monitor.Exit(_flushLock);
+            Volatile.Write(ref _flushing, 0);
         }
-
-        await Task.CompletedTask;
     }
 
     /// <summary>

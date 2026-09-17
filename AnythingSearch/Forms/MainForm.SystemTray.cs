@@ -113,8 +113,12 @@ public partial class MainForm
         this.Hide();
         if (_showBalloonOnMinimize)
         {
-            var source = _searchManager.CurrentSource;
-            var sourceText = source == SearchSource.SQLite ? "local database" : "Windows Search";
+            var sourceText = _searchManager.CurrentSource switch
+            {
+                SearchSource.Memory => "the in-memory index",
+                SearchSource.SQLite => "the local database",
+                _ => "a partial index - still indexing"
+            };
 
             _notifyIcon.ShowBalloonTip(2000, "Anything Search",
                 $"Running in background using {sourceText}.\nDouble-click the tray icon to open.",
@@ -139,9 +143,9 @@ public partial class MainForm
                 var source = _searchManager?.CurrentSource ?? SearchSource.None;
                 var sourceText = source switch
                 {
+                    SearchSource.Memory => "In-memory index",
                     SearchSource.SQLite => "Local Database",
-                    SearchSource.WindowsSearch => "Windows Search",
-                    _ => "Initializing..."
+                    _ => "Indexing..."
                 };
                 sourceItem.Text = $"🔍  Source: {sourceText}";
             }

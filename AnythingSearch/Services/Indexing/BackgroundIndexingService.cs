@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Threading.Channels;
 using AnythingSearch.Models;
 using AnythingSearch.Database;
@@ -6,74 +6,117 @@ using AnythingSearch.Database;
 namespace AnythingSearch.Services;
 
 /// <summary>
-/// High-performance background indexing service.
-/// Uses maximum parallelization for fastest indexing.
+/// Phased, resumable background indexer.
 ///
-/// Performance optimizations:
-/// - Channel-based producer-consumer pattern
-/// - Parallel.ForEach with all CPU cores
-/// - Multiple consumer tasks for database writes
-/// - Batch processing with optimal sizes
-/// - Lock-free counters
+/// The index is built in three phases, each split into scopes that are published the moment they
+/// finish, so the app is searchable in seconds rather than after a full disk walk:
+///   Phase 1  Downloads and the directories holding recently used files.
+///   Phase 2  every non-OS fixed drive, one drive at a time, published per drive.
+///   Phase 3  the OS drive, published once it completes.
 ///
-/// Split into partial classes: this file owns the lifecycle (init/start/cancel/rebuild/dispose);
-/// see BackgroundIndexingService.DirectoryScanning.cs for the disk-walking producer side and
-/// BackgroundIndexingService.Consumer.cs for the database-writing consumer side.
+/// Everything about a run is written to indexing_state.json (see <see cref="IndexingState"/>):
+/// phase, per-drive status, the units already committed, completion and failures. A restart
+/// therefore resumes the missing parts instead of rebuilding 3+ million entries.
+///
+/// Throughput is deliberately bounded rather than maximal. The previous version ran one walker
+/// per CPU core across hundreds of directories on all drives at once, which pinned the disk at
+/// 100% and starved the UI. Here one scope runs at a time, with a small number of concurrent
+/// walkers and a throttle pause between batches (see <see cref="AppSettings.MaxIndexingThreads"/>).
+///
+/// Split into partial classes: this file owns the lifecycle and public API,
+/// BackgroundIndexingService.Pipeline.cs the phase/scope/checkpoint loop,
+/// BackgroundIndexingService.DirectoryScanning.cs the disk walk,
+/// BackgroundIndexingService.Consumer.cs the database writer and progress reporting, and
+/// BackgroundIndexingService.CatchUp.cs the reconciliation pass for an index already built.
 /// </summary>
 public partial class BackgroundIndexingService : IDisposable
 {
     private readonly FileDatabase _database;
     private readonly SettingsManager _settingsManager;
+    private readonly IndexPlanner _planner;
     private readonly DatabaseStatus _status;
+    private readonly IndexingState _state;
 
-    // High-performance channel
+    /// <summary>Guards <see cref="_state"/>, which is written from parallel walkers.</summary>
+    private readonly object _stateLock = new();
+
     private Channel<FileEntry>? _channel;
 
     // Lock-free counters
-    private long _totalFiles = 0;
-    private long _totalFolders = 0;
-    private long _processedItems = 0;
+    private long _totalFiles;
+    private long _totalFolders;
+    private long _scopeFiles;
+    private long _scopeFolders;
     private string _currentPath = "";
-    private volatile bool _isIndexing = false;
-    private volatile bool _scanningComplete = false;
+
+    private volatile bool _isIndexing;
+    private volatile bool _hasSearchableData;
+    private volatile string _phaseLabel = "";
+    private volatile IndexPhase _currentPhase = IndexPhase.Priority;
+    private int _completedScopes;
+    private int _totalScopes;
 
     private Stopwatch _stopwatch = new();
-    private Task? _backgroundIndexingTask;
-    private Task[]? _consumerTasks;
+    private Task? _pipelineTask;
     private CancellationTokenSource? _cancellationTokenSource;
-    private bool _disposed = false;
+    private bool _disposed;
 
-    // Performance tuning - adjust based on your system
-    private const int ChannelCapacity = 200_000;
-    private const int ConsumerCount = 1;               // Single consumer - DB flush has lock
-    private const int ConsumerBatchSize = 20000;       // Larger batches
-    private const int ProgressReportInterval = 50000;  // Less frequent reporting
+    // Bounded far below the old 200k: the channel is a buffer, not a staging area, and a large
+    // one only holds hundreds of megabytes of FileEntry objects while the single writer catches up.
+    private const int ChannelCapacity = 50_000;
+    private const int ConsumerBatchSize = 10_000;
+    private const int ProgressReportInterval = 20_000;
 
     public event Action<IndexProgress>? ProgressChanged;
     public event Action? IndexingCompleted;
     public event Action? DatabaseReady;
     public event Action<string>? IndexingFailed;
 
+    /// <summary>
+    /// Raised when a scope's entries are committed and its data can be searched. Carries the
+    /// scope label, e.g. "Drive D:\".
+    /// </summary>
+    public event Action<string>? ScopePublished;
+
     public bool IsIndexing => _isIndexing;
-    public bool IsDatabaseReady => _status.IsReady;
+
+    /// <summary>
+    /// Whether anything can be searched yet - true once the first scope has been published, so
+    /// the UI can unlock search while later phases are still running in the background.
+    /// </summary>
+    public bool HasSearchableData => _hasSearchableData;
+
+    public bool IsDatabaseReady => _status.IsReady || _hasSearchableData;
+
     public DatabaseStatus Status => _status;
+
+    /// <summary>Persisted phase/checkpoint state, exposed for status display.</summary>
+    public IndexingState State => _state;
 
     /// <param name="statusFilePathOverride">
     /// Optional explicit database_status.json path, used by automated tests so they never touch
     /// the real status file under %LocalAppData%. Production code uses the default.
     /// </param>
+    /// <param name="stateFilePathOverride">
+    /// Same idea for indexing_state.json.
+    /// </param>
     public BackgroundIndexingService(
         FileDatabase database,
         SettingsManager settingsManager,
-        string? statusFilePathOverride = null)
+        string? statusFilePathOverride = null,
+        string? stateFilePathOverride = null)
     {
         _database = database;
         _settingsManager = settingsManager;
+        _planner = new IndexPlanner(settingsManager);
         _status = DatabaseStatus.Load(statusFilePathOverride);
+        _state = IndexingState.Load(stateFilePathOverride
+            ?? (statusFilePathOverride == null ? null : statusFilePathOverride + ".state.json"));
     }
 
     /// <summary>
-    /// Initialize the service and check if database is ready.
+    /// Open the database and decide what still needs indexing. Returns as soon as the decision is
+    /// made - any actual indexing continues in the background.
     /// </summary>
     public async Task InitializeAsync(bool forceReindex = false)
     {
@@ -81,47 +124,75 @@ public partial class BackgroundIndexingService : IDisposable
 
         if (forceReindex)
         {
-            _status.Reset();
-            _ = StartBackgroundIndexAsync();
+            StartPipeline(fullRebuild: true);
             return;
         }
 
-        if (_status.IsReady)
-        {
-            var count = await _database.GetCountAsync();
-            System.Diagnostics.Debug.WriteLine($"[BackgroundIndexingService] Status is Ready, DB count: {count}");
+        var count = await _database.GetCountAsync();
 
-            if (count > 0)
-            {
-                System.Diagnostics.Debug.WriteLine($"[BackgroundIndexingService] Database ready with {count} items.");
-                DatabaseReady?.Invoke();
-                return;
-            }
-            else
-            {
-                System.Diagnostics.Debug.WriteLine($"[BackgroundIndexingService] DB empty, resetting.");
-                _status.Reset();
-            }
+        // State and database must agree. An empty database with recorded progress (a deleted or
+        // corrupted file) means the progress is meaningless, so start over.
+        if (count == 0 && _state.Scopes.Count > 0)
+            _state.Reset();
+
+        SyncPlanWithState();
+
+        if (_state.IsComplete && count > 0)
+        {
+            _hasSearchableData = true;
+            if (!_status.IsReady)
+                _status.MarkCompleted(_state.TotalFiles, _state.TotalFolders);
+
+            Debug.WriteLine($"[Indexing] Index complete with {count:N0} items - nothing to do.");
+            DatabaseReady?.Invoke();
+            return;
         }
 
-        if (_status.State == DatabaseState.Failed)
+        // Partial index from an earlier run: what is already there is searchable straight away,
+        // and the pipeline picks up where it stopped.
+        if (_state.HasSearchableData && count > 0)
         {
-            System.Diagnostics.Debug.WriteLine($"[BackgroundIndexingService] Previous failed: {_status.ErrorMessage}");
-            _status.Reset();
+            _hasSearchableData = true;
+            DatabaseReady?.Invoke();
         }
 
-        if (_status.State == DatabaseState.NotStarted)
-        {
-            System.Diagnostics.Debug.WriteLine($"[BackgroundIndexingService] Starting indexing...");
-            _ = StartBackgroundIndexAsync();
-        }
+        Debug.WriteLine($"[Indexing] Resuming - {_state.Scopes.Count(s => s.Status == IndexScopeStatus.Completed)} " +
+                        $"of {_state.Scopes.Count} scopes already done.");
+        StartPipeline(fullRebuild: false);
     }
 
     /// <summary>
-    /// Start full background indexing with maximum parallelization.
-    /// Returns immediately, indexing continues in background.
+    /// Continue an interrupted index, or start one if none exists. This and
+    /// <see cref="RebuildIndexAsync"/> are the only entry points, so startup indexing and the
+    /// Index button share exactly the same pipeline.
     /// </summary>
-    public async Task StartBackgroundIndexAsync(CancellationToken cancellationToken = default)
+    public Task ResumeIndexingAsync(CancellationToken cancellationToken = default)
+    {
+        StartPipeline(fullRebuild: false, cancellationToken);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Discard the existing index and build it again from scratch.</summary>
+    public async Task RebuildIndexAsync(CancellationToken cancellationToken = default)
+    {
+        // Set before anything else: the database is about to be dropped, so search has to be
+        // locked from this moment rather than when the pipeline thread gets around to starting.
+        _hasSearchableData = false;
+
+        if (_isIndexing)
+        {
+            CancelIndexing();
+            await WaitForIndexingAsync();
+        }
+
+        StartPipeline(fullRebuild: true, cancellationToken);
+    }
+
+    /// <summary>
+    /// Kick off the pipeline on a background thread. Never blocks the caller, so the UI thread
+    /// is free the moment the form is constructed.
+    /// </summary>
+    private void StartPipeline(bool fullRebuild, CancellationToken cancellationToken = default)
     {
         if (_isIndexing)
         {
@@ -130,124 +201,21 @@ public partial class BackgroundIndexingService : IDisposable
         }
 
         _isIndexing = true;
-        _scanningComplete = false;
         _stopwatch = Stopwatch.StartNew();
-        _totalFiles = 0;
-        _totalFolders = 0;
-        _processedItems = 0;
-
-        _status.MarkIndexingStarted();
-
-        // Create high-performance bounded channel
-        _channel = Channel.CreateBounded<FileEntry>(new BoundedChannelOptions(ChannelCapacity)
-        {
-            FullMode = BoundedChannelFullMode.Wait,
-            SingleReader = false,
-            SingleWriter = false
-        });
-
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var token = _cancellationTokenSource.Token;
 
-        try
-        {
-            await _database.ClearAsync();
-            await _database.BeginBatchAsync();
-        }
-        catch (Exception ex)
-        {
-            _isIndexing = false;
-            _status.MarkFailed($"Database initialization failed: {ex.Message}");
-            IndexingFailed?.Invoke(ex.Message);
-            return;
-        }
-
-        // Start multiple consumer tasks for parallel DB writes
-        _consumerTasks = new Task[ConsumerCount];
-        for (int i = 0; i < ConsumerCount; i++)
-        {
-            int consumerId = i;
-            _consumerTasks[i] = Task.Run(() => ConsumerAsync(consumerId, token), token);
-        }
-
-        // Start background indexing
-        _backgroundIndexingTask = Task.Run(async () =>
-        {
-            try
-            {
-                var processorCount = Environment.ProcessorCount;
-                ReportProgress($"Starting high-performance index ({processorCount} CPUs)...");
-
-                var allDirectoriesToScan = CollectRootDirectories();
-                ReportProgress($"Scanning {allDirectoriesToScan.Count} directories in parallel...");
-
-                // Use Parallel.ForEach for maximum CPU utilization
-                var parallelOptions = new ParallelOptions
-                {
-                    MaxDegreeOfParallelism = processorCount,
-                    CancellationToken = token
-                };
-
-                await Task.Run(() =>
-                {
-                    Parallel.ForEach(allDirectoriesToScan, parallelOptions, directory =>
-                    {
-                        if (!token.IsCancellationRequested)
-                        {
-                            ScanDirectoryFast(directory, token);
-                        }
-                    });
-                }, token);
-
-                _scanningComplete = true;
-                _channel?.Writer.Complete();
-
-                ReportProgress("Waiting for database writes...");
-
-                if (_consumerTasks != null)
-                {
-                    await Task.WhenAll(_consumerTasks);
-                }
-
-                _stopwatch.Stop();
-
-                await _database.CommitBatchAsync();
-                await _database.FinalizeIndexingAsync();
-
-                var totalCount = await _database.GetCountAsync();
-                var totalTime = _stopwatch.Elapsed;
-                var speed = totalTime.TotalSeconds > 0 ? totalCount / totalTime.TotalSeconds : 0;
-
-                _isIndexing = false;
-                _status.MarkCompleted(_totalFiles, _totalFolders);
-
-                ReportProgress($"✓ Complete! {totalCount:N0} items in {totalTime:mm\\:ss} ({speed:N0}/sec)");
-
-                IndexingCompleted?.Invoke();
-                DatabaseReady?.Invoke();
-            }
-            catch (OperationCanceledException)
-            {
-                _isIndexing = false;
-                _channel?.Writer.TryComplete();
-                _status.MarkFailed("Indexing was cancelled");
-                ReportProgress("Indexing cancelled");
-            }
-            catch (Exception ex)
-            {
-                _isIndexing = false;
-                _channel?.Writer.TryComplete();
-                _status.MarkFailed(ex.Message);
-                ReportProgress($"Indexing error: {ex.Message}");
-                IndexingFailed?.Invoke(ex.Message);
-            }
-        }, token);
+        _pipelineTask = Task.Run(() => RunPipelineAsync(fullRebuild, token), CancellationToken.None);
     }
 
+    /// <summary>Await the running pipeline. Used by tests and by rebuild, never by the UI thread.</summary>
     public async Task WaitForIndexingAsync()
     {
-        if (_backgroundIndexingTask != null)
-            await _backgroundIndexingTask;
+        var task = _pipelineTask;
+        if (task == null) return;
+
+        try { await task; }
+        catch (OperationCanceledException) { }
     }
 
     public void CancelIndexing()
@@ -256,20 +224,6 @@ public partial class BackgroundIndexingService : IDisposable
 
         _cancellationTokenSource?.Cancel();
         _channel?.Writer.TryComplete();
-        _isIndexing = false;
-        _status.MarkFailed("Indexing was cancelled by user");
-    }
-
-    public async Task RebuildIndexAsync(CancellationToken cancellationToken = default)
-    {
-        if (_isIndexing)
-        {
-            CancelIndexing();
-            await Task.Delay(500);
-        }
-
-        _status.Reset();
-        await StartBackgroundIndexAsync(cancellationToken);
     }
 
     public void Dispose()
@@ -282,6 +236,9 @@ public partial class BackgroundIndexingService : IDisposable
             _cancellationTokenSource?.Cancel();
             _channel?.Writer.TryComplete();
             _isIndexing = false;
+
+            // The state file keeps the committed checkpoints, so the next launch resumes rather
+            // than rebuilding. Only the volatile status line records the interruption.
             _status.MarkFailed("Application closed during indexing");
         }
 

@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace AnythingSearch.Models;
@@ -195,8 +195,17 @@ public class DatabaseStatus
         Save();
     }
 
+    /// <summary>Wall-clock gap between progress saves, to keep this off the hot path.</summary>
+    private static readonly TimeSpan SaveInterval = TimeSpan.FromSeconds(5);
+
+    private DateTime _lastProgressSave = DateTime.MinValue;
+
     /// <summary>
-    /// Update progress during indexing
+    /// Update progress during indexing.
+    ///
+    /// Saved on a timer rather than every N items: progress is now reported in large steps, so
+    /// an item-count modulo test would fire almost never. Resumability does not depend on this
+    /// file anyway - see <see cref="IndexingState"/> - so this is purely for display.
     /// </summary>
     public void UpdateProgress(long files, long folders, double speed, string currentPath)
     {
@@ -206,9 +215,10 @@ public class DatabaseStatus
         CurrentPath = currentPath;
         LastUpdatedAt = DateTime.Now;
 
-        // Save periodically (every 10,000 items to avoid excessive I/O)
-        if ((TotalItems % 10000) == 0)
-            Save();
+        if (DateTime.Now - _lastProgressSave < SaveInterval) return;
+
+        _lastProgressSave = DateTime.Now;
+        Save();
     }
 
     /// <summary>

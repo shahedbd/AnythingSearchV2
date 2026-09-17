@@ -6,14 +6,9 @@ namespace AnythingSearch.Models;
 public enum SearchSource
 {
     /// <summary>
-    /// No search available
+    /// No search available - nothing has been indexed yet, or the index is being rebuilt
     /// </summary>
     None,
-
-    /// <summary>
-    /// Using Windows Search Index
-    /// </summary>
-    WindowsSearch,
 
     /// <summary>
     /// Using local SQLite database

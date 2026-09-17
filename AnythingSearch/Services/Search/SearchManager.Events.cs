@@ -3,8 +3,8 @@ using AnythingSearch.Models;
 namespace AnythingSearch.Services;
 
 /// <summary>
-/// Event wiring side of SearchManager: reacts to BackgroundIndexingService/WindowsSearchService
-/// events and re-exposes the indexing events MainForm subscribes to.
+/// Event wiring side of SearchManager: reacts to BackgroundIndexingService events and re-exposes
+/// the indexing events MainForm subscribes to.
 /// </summary>
 public partial class SearchManager
 {
@@ -21,28 +21,29 @@ public partial class SearchManager
         _memorySearch.RequestRebuild("database ready");
     }
 
+    /// <summary>
+    /// One indexing scope has been committed - phase 1, or one drive. Its entries are folded into
+    /// the in-memory index straight away, which is what makes a drive searchable the moment it
+    /// finishes instead of at the end of the whole run.
+    /// </summary>
+    private void OnScopePublished(string scopeLabel)
+    {
+        _useSqlite = true;
+        _consecutiveSqliteFailures = 0;
+        SearchSourceChanged?.Invoke(CurrentSource);
+        _memorySearch.RequestRebuild($"{scopeLabel} indexed");
+    }
+
     private void OnIndexingProgress(IndexProgress progress)
     {
-        StatusChanged?.Invoke($"Indexing: {progress.TotalFiles + progress.TotalFolders:N0} items ({progress.ItemsPerSecond:N0}/sec)");
+        StatusChanged?.Invoke(
+            $"{progress.PhaseLabel}: {progress.TotalFiles + progress.TotalFolders:N0} items " +
+            $"({progress.ItemsPerSecond:N0}/sec)");
     }
 
     private void OnIndexingFailed(string error)
     {
         StatusChanged?.Invoke($"Indexing failed: {error}");
-
-        // If Windows Search is available, continue using it
-        if (_windowsSearchAvailable)
-        {
-            StatusChanged?.Invoke("Using Windows Search as fallback");
-        }
-    }
-
-    private void OnWindowsSearchStatus(string status)
-    {
-        if (!_useSqlite)
-        {
-            StatusChanged?.Invoke(status);
-        }
     }
 
     #endregion
@@ -74,6 +75,15 @@ public partial class SearchManager
     {
         add => _indexingService.IndexingCompleted += value;
         remove => _indexingService.IndexingCompleted -= value;
+    }
+
+    /// <summary>
+    /// Subscribe to the moment one phase or drive becomes searchable. Carries the scope label.
+    /// </summary>
+    public event Action<string>? ScopePublished
+    {
+        add => _indexingService.ScopePublished += value;
+        remove => _indexingService.ScopePublished -= value;
     }
 
     #endregion

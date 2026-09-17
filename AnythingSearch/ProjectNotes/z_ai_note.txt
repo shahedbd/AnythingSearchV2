@@ -9,6 +9,37 @@ C:\Users\Public\src\MS_Store_App\NetSpeedMeterPlus\Doc\Requirements
 - Preserve existing behavior unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
+Issue 01: Freash app start-up takes too much time for my current hard disk data indexing. I have two hard disk one SSD for OS and another one general HDD.
+App got hang, my disk shows using 100%. Some time it goes 30 minutes more.
+Total folders files around: 3.5 millions
+Some time app index: 1 million, some times 2, 2.5 million etc. 
+
+Issue 02: 
+Forms/MainForm.Indexing.cs/BtnIndex_Click: It also create same issue as issue 01. 
+
+
+Now, review, improve and refactor file indesing modules. 
+-remove feature: during indexing windows search function.
+-lock app, during indexing. Only show status: app is indexing...
+-make index module by phase:
+phase 01: add only download and recent files director and make app ready for user.
+
+phase 02: add all drive except OS drive. dive by drive index available for app in background.
+Create subn phase here for each drive.
+
+phase 03: add OS drive index in background, once done then make it available for app search
+-make a json file to trak data index status, so that missing part can index into next app startup
+
+
+
+
+
+
+
+
+
+
+
 Now fix this new error:
 System.OperationCanceledException: 'The operation was canceled.'
 

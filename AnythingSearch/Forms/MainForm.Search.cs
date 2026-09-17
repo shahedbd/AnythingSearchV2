@@ -5,7 +5,7 @@ namespace AnythingSearch.Forms;
 
 /// <summary>
 /// Search functionality for MainForm
-/// Uses SearchManager to automatically switch between Windows Search and SQLite
+/// Uses SearchManager, which answers from the in-memory index and falls back to SQLite
 ///
 /// Threading rule: the UI thread must never block. The query itself runs on a
 /// thread-pool thread (see SearchManager.Query.cs) and only row population happens
@@ -39,6 +39,15 @@ public partial class MainForm
         if (btnClearSearch == null || dgvResults == null || pnlRecentSearches == null || lblSearchInfo == null)
             return;
 
+        // Nothing is searchable until the first indexing phase publishes; the status line
+        // already says so, so a keystroke here must not run a query that can only return zero.
+        if (_searchManager.IsSearchLocked)
+        {
+            CancelPendingSearch();
+            lblSearchInfo.Text = "App is indexing... search will be available shortly";
+            return;
+        }
+
         var searchText = txtSearch.Text;
 
         // Handle placeholder
@@ -49,7 +58,7 @@ public partial class MainForm
             dgvResults.Visible = false;
             pnlRecentSearches.Visible = true;
             LoadRecentSearches();
-            lblSearchInfo.Text = _searchManager.IsDatabaseReady ? "Ready" : "Ready (using Windows Search)";
+            lblSearchInfo.Text = "Ready";
             return;
         }
 
@@ -134,7 +143,6 @@ public partial class MainForm
         {
             SearchSource.Memory => "Instant",
             SearchSource.SQLite => "Local DB",
-            SearchSource.WindowsSearch => "Windows Search",
             _ => "Search"
         };
 

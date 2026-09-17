@@ -10,10 +10,11 @@ namespace AnythingSearch.Forms;
 /// DPI-aware design for Microsoft Store compliance (150% scaling support)
 /// 
 /// Search Strategy:
-/// 1. On startup, uses Windows Search for immediate results (if available)
-/// 2. Background indexing builds SQLite database in parallel
-/// 3. Once SQLite is ready, automatically switches to it for faster results
-/// 4. Falls back to Windows Search if SQLite fails
+/// 1. Indexing runs in phases in the background: Downloads and recent files, then each
+///    non-OS drive, then the OS drive. Each phase becomes searchable as soon as it finishes.
+/// 2. Search is disabled - with a clear status - only while nothing has been published yet.
+/// 3. Once the index is loaded into RAM, searches are answered from memory; SQLite covers the
+///    window before the snapshot lands.
 /// </summary>
 public partial class MainForm : Form
 {
@@ -107,6 +108,7 @@ public partial class MainForm : Form
         _searchManager.SearchSourceChanged += OnSearchSourceChanged;
         _searchManager.ProgressChanged += OnIndexingProgress;
         _searchManager.IndexingCompleted += OnIndexingCompleted;
+        _searchManager.ScopePublished += OnScopePublished;
         _fileWatcher.StatusChanged += OnWatcherStatus;
         _searchManager.CatchUpStatusChanged += OnWatcherStatus;
 
@@ -116,15 +118,13 @@ public partial class MainForm : Form
 
         try
         {
-            // Initialize the search manager
-            // This will:
-            // 1. Check Windows Search availability
-            // 2. Check if SQLite database is ready
-            // 3. Start background indexing if needed
+            // Opens the index, publishes whatever is already stored, and resumes any missing
+            // phases in the background. Returns as soon as that decision is made.
             await _searchManager.InitializeAsync();
 
             // Update UI based on current state
             UpdateSearchSourceUI();
+            ApplySearchLock();
             await UpdateTotalCountAsync();
 
             LoadRecentSearches();
@@ -136,8 +136,9 @@ public partial class MainForm : Form
             }
 
             // Pick up everything that changed while the app was closed - the watcher above only
-            // reports changes from now on. Runs in the background, never blocks the UI.
-            if (_searchManager.IsDatabaseReady)
+            // reports changes from now on. Runs in the background, never blocks the UI. Skipped
+            // while indexing is still running: the pipeline is already reading the same disk.
+            if (_searchManager.IsDatabaseReady && !_searchManager.IsIndexing)
             {
                 _ = _searchManager.RunCatchUpAsync().ContinueWith(
                     _ => SafeInvoke(() => _ = UpdateTotalCountAsync()),
@@ -168,44 +169,33 @@ public partial class MainForm : Form
                 btnIndex.Text = "⏳ Indexing...";
                 btnIndex.Enabled = false;
                 progressBar.Visible = true;
-                lblSearchInfo.Text = _searchManager.IndexingStatus.GetStatusMessage();
+                lblSearchInfo.Text = _searchManager.GetStatusMessage();
+                ApplySearchLock();
+                return;
             }
-            else
+
+            progressBar.Visible = false;
+            btnIndex.Enabled = true;
+            txtSearch.Enabled = true;
+
+            switch (source)
             {
-                progressBar.Visible = false;
-                btnIndex.Enabled = true;
+                case SearchSource.Memory:
+                case SearchSource.SQLite:
+                    btnIndex.Text = "🔄 Rebuild Index";
+                    lblSearchInfo.Text = $"✓ Local database ready ({_searchManager.IndexingStatus.TotalItems:N0} items)";
+                    break;
 
-                switch (source)
-                {
-                    case SearchSource.SQLite:
-                        btnIndex.Text = "🔄 Rebuild Index";
-                        lblSearchInfo.Text = $"✓ Local database ready ({_searchManager.IndexingStatus.TotalItems:N0} items)";
-                        break;
-
-                    case SearchSource.WindowsSearch:
-                        btnIndex.Text = "🔍 Build Index";
-                        lblSearchInfo.Text = "Using Windows Search (building local index...)";
-                        break;
-
-                    default:
-                        btnIndex.Text = "🔧 Build Index";
-                        lblSearchInfo.Text = "Search initializing...";
-                        break;
-                }
+                default:
+                    btnIndex.Text = "🔧 Build Index";
+                    lblSearchInfo.Text = "No index yet - use Build Index to create one";
+                    break;
             }
 
             // Update watch status
-            if (_searchManager.IsDatabaseReady)
+            if (_searchManager.IsDatabaseReady && chkAutoWatch.Checked)
             {
-                if (chkAutoWatch.Checked)
-                {
-                    lblWatchStatus.Text = "Auto-watch: Monitoring file changes";
-                    lblWatchStatus.ForeColor = AppColors.Success;
-                }
-            }
-            else if (_searchManager.IsWindowsSearchAvailable)
-            {
-                lblWatchStatus.Text = "Windows Search: Active";
+                lblWatchStatus.Text = "Auto-watch: Monitoring file changes";
                 lblWatchStatus.ForeColor = AppColors.Success;
             }
         });
@@ -230,7 +220,7 @@ public partial class MainForm : Form
             UpdateSearchSourceUI();
 
             // Show status in the UI instead of popup notification
-            if (source == SearchSource.SQLite)
+            if (source == SearchSource.SQLite || source == SearchSource.Memory)
             {
                 // Show success message in watch status area (will be visible for a few seconds)
                 lblWatchStatus.Text = $"✓ Local database ready! ({_searchManager.IndexingStatus.TotalItems:N0} items indexed)";
@@ -279,8 +269,7 @@ public partial class MainForm : Form
             if (IsDisposed || Disposing) return;
             SafeInvoke(() =>
             {
-                var source = _searchManager.CurrentSource;
-                var sourceText = source == SearchSource.SQLite ? "local" : "Windows Search";
+                var sourceText = _searchManager.CurrentSource == SearchSource.Memory ? "in memory" : "local";
                 lblTotalFiles.Text = $"Total: {count:N0} items ({sourceText})";
             });
         }
@@ -299,6 +288,7 @@ public partial class MainForm : Form
             _searchManager.SearchSourceChanged -= OnSearchSourceChanged;
             _searchManager.ProgressChanged -= OnIndexingProgress;
             _searchManager.IndexingCompleted -= OnIndexingCompleted;
+            _searchManager.ScopePublished -= OnScopePublished;
             _fileWatcher.StatusChanged -= OnWatcherStatus;
             _searchManager.CatchUpStatusChanged -= OnWatcherStatus;
 

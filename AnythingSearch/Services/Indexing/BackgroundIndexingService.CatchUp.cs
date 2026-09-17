@@ -39,7 +39,7 @@ public partial class BackgroundIndexingService
 
             var indexedFolders = await _database.GetFolderModifiedMapAsync(cancellationToken);
 
-            var roots = CollectRootDirectories();
+            var roots = _planner.CollectAllUnits();
             var done = 0;
 
             foreach (var root in roots)
@@ -108,7 +108,7 @@ public partial class BackgroundIndexingService
 
             var dir = stack.Pop();
             var path = dir.FullName;
-            if (IsExcluded(path)) continue;
+            if (_planner.IsExcluded(path)) continue;
 
             try
             {
@@ -146,13 +146,10 @@ public partial class BackgroundIndexingService
                 {
                     try
                     {
-                        var attrs = subDir.Attributes;
-                        if ((attrs & FileAttributes.System) == FileAttributes.System &&
-                            (attrs & FileAttributes.Hidden) == FileAttributes.Hidden)
-                            continue;
+                        if (IndexPlanner.IsSystemHidden(subDir)) continue;
+                        if (_planner.IsExcluded(subDir.FullName)) continue;
 
-                        if (!IsExcluded(subDir.FullName))
-                            stack.Push(subDir);
+                        stack.Push(subDir);
                     }
                     catch { }
                 }
@@ -191,7 +188,7 @@ public partial class BackgroundIndexingService
 
         foreach (var file in files)
         {
-            if (IsExcludedExtension(file.Extension)) continue;
+            if (_planner.IsExcludedExtension(file.Extension)) continue;
             onDisk.Add(file.Name);
 
             if (indexedNames.Contains(file.Name)) continue;
@@ -214,7 +211,7 @@ public partial class BackgroundIndexingService
 
         foreach (var subDir in subDirs)
         {
-            if (IsExcluded(subDir.FullName)) continue;
+            if (_planner.IsExcluded(subDir.FullName)) continue;
             onDisk.Add(subDir.Name);
             // The folder row itself is inserted when the walk reaches it
         }

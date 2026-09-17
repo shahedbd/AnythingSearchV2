@@ -5,14 +5,18 @@ using AnythingSearch.Services.Search.Memory;
 namespace AnythingSearch.Services;
 
 /// <summary>
-/// Manages search operations, automatically switching between Windows Search
-/// and the SQLite database based on database readiness.
-/// 
+/// Manages search operations on top of the local index.
+///
 /// Strategy:
-/// 1. On startup, use Windows Search for immediate results (if available)
-/// 2. Background indexing runs in parallel to build SQLite database
-/// 3. Once SQLite is ready, switch to it for faster, more complete results
-/// 4. Falls back to Windows Search if SQLite fails
+/// 1. Searches are answered from the in-memory snapshot whenever one is loaded.
+/// 2. SQLite answers them while that snapshot is still being built, or if it fails to load.
+/// 3. Until the first indexing phase has published anything there is nothing to search, and
+///    <see cref="IsSearchLocked"/> tells the UI to disable the search box and say so.
+///
+/// Windows Search is deliberately not used. It was previously queried while the local index was
+/// being built, which meant two indexes were being consulted, results changed shape halfway
+/// through a build, and the app depended on a service the user may have disabled. The phased
+/// indexer makes the local index searchable within seconds instead, which removes the need.
 ///
 /// Split into partial classes: this file owns initialization and the rebuild/status API;
 /// see SearchManager.Query.cs for search execution and SearchManager.Events.cs for the
@@ -20,13 +24,11 @@ namespace AnythingSearch.Services;
 /// </summary>
 public partial class SearchManager : IDisposable
 {
-    private readonly WindowsSearchService _windowsSearch;
     private readonly BackgroundIndexingService _indexingService;
     private readonly FileDatabase _database;
     private readonly MemorySearchService _memorySearch;
 
     private bool _useSqlite = false;
-    private bool _windowsSearchAvailable = false;
     private bool _disposed = false;
 
     // Circuit breaker: stop hammering a broken SQLite database on every keystroke
@@ -48,7 +50,7 @@ public partial class SearchManager : IDisposable
     /// </summary>
     public SearchSource CurrentSource => _memorySearch.IsReady
         ? SearchSource.Memory
-        : _useSqlite ? SearchSource.SQLite : SearchSource.WindowsSearch;
+        : _useSqlite ? SearchSource.SQLite : SearchSource.None;
 
     /// <summary>
     /// The in-memory index that answers searches once it has loaded. Exposed so the file watcher
@@ -57,19 +59,23 @@ public partial class SearchManager : IDisposable
     public MemorySearchService MemoryIndex => _memorySearch;
 
     /// <summary>
-    /// Whether the SQLite database is ready
+    /// Whether anything is available to search - true once the first indexing phase has published.
     /// </summary>
     public bool IsDatabaseReady => _indexingService.IsDatabaseReady;
 
     /// <summary>
-    /// Whether Windows Search is available
+    /// True while there is nothing to search yet, either on a first run before phase 1 finishes
+    /// or during a full rebuild. The UI disables the search box and shows a status instead.
     /// </summary>
-    public bool IsWindowsSearchAvailable => _windowsSearchAvailable;
+    public bool IsSearchLocked => !_indexingService.HasSearchableData;
 
     /// <summary>
     /// Current indexing progress
     /// </summary>
     public DatabaseStatus IndexingStatus => _indexingService.Status;
+
+    /// <summary>Persisted phase/checkpoint state, for status display.</summary>
+    public IndexingState IndexingState => _indexingService.State;
 
     /// <summary>
     /// Whether indexing is in progress
@@ -81,7 +87,6 @@ public partial class SearchManager : IDisposable
         SettingsManager settingsManager)
     {
         _database = database;
-        _windowsSearch = new WindowsSearchService();
         _indexingService = new BackgroundIndexingService(database, settingsManager);
         _memorySearch = new MemorySearchService(database.DatabasePath);
         _database.MaintenanceStatusChanged += status => StatusChanged?.Invoke(status);
@@ -92,62 +97,35 @@ public partial class SearchManager : IDisposable
         _indexingService.DatabaseReady += OnDatabaseReady;
         _indexingService.ProgressChanged += OnIndexingProgress;
         _indexingService.IndexingFailed += OnIndexingFailed;
-
-        // Subscribe to Windows Search status
-        _windowsSearch.StatusChanged += OnWindowsSearchStatus;
+        _indexingService.ScopePublished += OnScopePublished;
     }
 
     /// <summary>
-    /// Initialize the search manager.
-    /// Checks Windows Search availability and starts background indexing if needed.
+    /// Initialize the search manager: open the index, publish whatever is already there, and let
+    /// the indexer resume anything still missing in the background.
     /// </summary>
     public async Task InitializeAsync()
     {
-        // Check Windows Search availability
-        _windowsSearchAvailable = await _windowsSearch.IsAvailableAsync();
+        StatusChanged?.Invoke("Checking local index...");
 
-        if (_windowsSearchAvailable)
-        {
-            StatusChanged?.Invoke("Windows Search available - checking local database...");
-        }
-        else
-        {
-            StatusChanged?.Invoke("Windows Search not available - checking local database...");
-        }
-
-        // Initialize the indexing service (will check if DB is ready or start indexing)
+        // Decides whether the index is complete, partial or missing, and resumes in the
+        // background if needed. Never blocks on the disk walk itself.
         await _indexingService.InitializeAsync();
 
-        // Check if database is already ready (either was ready or just became ready)
-        if (_indexingService.IsDatabaseReady)
-        {
-            _useSqlite = true;
-            SearchSourceChanged?.Invoke(SearchSource.SQLite);
-            StatusChanged?.Invoke($"Using local database ({_indexingService.Status.TotalItems:N0} items)");
-            System.Diagnostics.Debug.WriteLine($"[SearchManager] Database is ready, using SQLite");
+        if (!_indexingService.IsDatabaseReady) return;
 
-            // Load the index into RAM in the background. Searches keep using SQLite until the
-            // snapshot lands, then switch over automatically.
-            _memorySearch.Start();
+        _useSqlite = true;
+        SearchSourceChanged?.Invoke(SearchSource.SQLite);
+        StatusChanged?.Invoke($"Using local database ({_indexingService.Status.TotalItems:N0} items)");
 
-            // Databases written before (FolderId, Name) became unique can hold the same entry
-            // many times over, which both bloats the index and shows the user duplicate rows.
-            // Clean that up once, off the UI thread, then reload the snapshot without them.
-            _ = Task.Run(() => RunStartupMaintenanceAsync());
-        }
-        else if (_indexingService.IsIndexing)
-        {
-            // Indexing started, use Windows Search in the meantime
-            if (_windowsSearchAvailable)
-            {
-                StatusChanged?.Invoke("Building local database... using Windows Search temporarily");
-            }
-            else
-            {
-                StatusChanged?.Invoke("Building local database...");
-            }
-            System.Diagnostics.Debug.WriteLine($"[SearchManager] Indexing in progress, using Windows Search");
-        }
+        // Load the index into RAM in the background. Searches keep using SQLite until the
+        // snapshot lands, then switch over automatically.
+        _memorySearch.Start();
+
+        // Databases written before (FolderId, Name) became unique can hold the same entry
+        // many times over, which both bloats the index and shows the user duplicate rows.
+        // Clean that up once, off the UI thread, then reload the snapshot without them.
+        _ = Task.Run(() => RunStartupMaintenanceAsync());
     }
 
     /// <summary>
@@ -157,12 +135,18 @@ public partial class SearchManager : IDisposable
     /// It waits for the first in-memory snapshot to settle first. Both jobs read the same file,
     /// and VACUUM needs it to itself - running them at the same time just means the compaction
     /// loses the race and silently does nothing.
+    ///
+    /// It is also skipped entirely while indexing is running: a later phase is still writing, so
+    /// a duplicate sweep would fight the writer for the connection and compaction would be undone
+    /// by the very next chunk.
     /// </summary>
     private async Task RunStartupMaintenanceAsync()
     {
         try
         {
             await _memorySearch.FirstSnapshotSettled;
+
+            if (_indexingService.IsIndexing) return;
 
             var removed = await _database.EnsureUniqueEntriesAsync();
             if (removed > 0)
@@ -178,27 +162,6 @@ public partial class SearchManager : IDisposable
     }
 
     /// <summary>
-    /// Perform content search (searches inside files).
-    /// Only available with Windows Search.
-    /// </summary>
-    public async Task<List<FileEntry>> SearchContentAsync(
-        string query,
-        int maxResults = 500,
-        CancellationToken cancellationToken = default)
-    {
-        if (!_windowsSearchAvailable)
-        {
-            StatusChanged?.Invoke("Content search requires Windows Search");
-            return new List<FileEntry>();
-        }
-
-        // OLE DB has no real async I/O - keep it off the UI thread
-        return await Task.Run(
-            () => _windowsSearch.SearchContentAsync(query, maxResults, cancellationToken),
-            cancellationToken);
-    }
-
-    /// <summary>
     /// Get total number of indexed items
     /// </summary>
     public async Task<long> GetTotalCountAsync()
@@ -211,29 +174,30 @@ public partial class SearchManager : IDisposable
             // COUNT(*) over a large index is slow - never run it on the UI thread
             return await Task.Run(() => _database.GetCountAsync());
         }
-        else
-        {
-            return _indexingService.Status.TotalItems;
-        }
+
+        return _indexingService.Status.TotalItems;
     }
 
     /// <summary>
-    /// Force rebuild of the SQLite index
+    /// Discard the index and build it again from scratch. Search is locked until the first phase
+    /// publishes again, because there is genuinely nothing to search in the meantime.
     /// </summary>
     public async Task RebuildIndexAsync(CancellationToken cancellationToken = default)
     {
-        // Temporarily switch to Windows Search during rebuild
-        if (_windowsSearchAvailable)
-        {
-            _useSqlite = false;
-            SearchSourceChanged?.Invoke(SearchSource.WindowsSearch);
-            StatusChanged?.Invoke("Rebuilding index - using Windows Search temporarily");
-        }
-
+        _useSqlite = false;
         _memorySearch.Invalidate();
+        SearchSourceChanged?.Invoke(SearchSource.None);
+        StatusChanged?.Invoke("Rebuilding the index...");
+
         await _indexingService.RebuildIndexAsync(cancellationToken);
-        _memorySearch.RequestRebuild("index rebuilt");
     }
+
+    /// <summary>
+    /// Continue an index that was interrupted, without discarding what is already stored. This is
+    /// the same pipeline startup uses, so the Index button and startup behave identically.
+    /// </summary>
+    public Task ResumeIndexingAsync(CancellationToken cancellationToken = default)
+        => _indexingService.ResumeIndexingAsync(cancellationToken);
 
     /// <summary>
     /// Reconcile the existing index with the disk, picking up everything that changed while the
@@ -245,7 +209,7 @@ public partial class SearchManager : IDisposable
         => Task.Run(() => _indexingService.RunCatchUpAsync(cancellationToken), cancellationToken);
 
     /// <summary>
-    /// Cancel ongoing indexing
+    /// Cancel ongoing indexing. Progress already committed is kept, so the next run resumes.
     /// </summary>
     public void CancelIndexing()
     {
@@ -259,24 +223,18 @@ public partial class SearchManager : IDisposable
     {
         if (_indexingService.IsIndexing)
         {
-            return _indexingService.Status.GetStatusMessage();
+            return IsSearchLocked
+                ? "App is indexing..."
+                : _indexingService.Status.GetStatusMessage();
         }
-        else if (_memorySearch.IsReady)
-        {
+
+        if (_memorySearch.IsReady)
             return $"Instant search ({_memorySearch.Count:N0} items in memory)";
-        }
-        else if (_useSqlite)
-        {
+
+        if (_useSqlite)
             return $"Using local database ({_indexingService.Status.TotalItems:N0} items)";
-        }
-        else if (_windowsSearchAvailable)
-        {
-            return "Using Windows Search Index";
-        }
-        else
-        {
-            return "Search unavailable";
-        }
+
+        return "Search unavailable - no index yet";
     }
 
     public void Dispose()
@@ -287,7 +245,7 @@ public partial class SearchManager : IDisposable
         _indexingService.DatabaseReady -= OnDatabaseReady;
         _indexingService.ProgressChanged -= OnIndexingProgress;
         _indexingService.IndexingFailed -= OnIndexingFailed;
-        _windowsSearch.StatusChanged -= OnWindowsSearchStatus;
+        _indexingService.ScopePublished -= OnScopePublished;
 
         _indexingService.Dispose();
         _memorySearch.Dispose();

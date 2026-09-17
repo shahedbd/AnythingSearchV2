@@ -4,8 +4,12 @@ using AnythingSearch.Services;
 namespace AnythingSearch.Forms;
 
 /// <summary>
-/// Indexing functionality for MainForm
-/// Uses SearchManager which automatically builds and switches to SQLite database
+/// Indexing functionality for MainForm.
+///
+/// The Index button drives the exact same phased pipeline as startup - it either resumes an
+/// interrupted index or rebuilds from scratch, and both run in the background without blocking
+/// the UI thread. There is no separate "manual indexing" code path any more: the old button
+/// handler kicked off its own full-drive scan, which is what froze the window and pinned the disk.
 /// </summary>
 public partial class MainForm
 {
@@ -15,68 +19,90 @@ public partial class MainForm
     {
         if (_searchManager.IsIndexing)
         {
-            // Offer to cancel ongoing indexing
-            var cancelResult = MessageBox.Show(
-                "Indexing is in progress.\n\n" +
-                "Would you like to cancel it?",
-                "Indexing In Progress",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question);
-
-            if (cancelResult == DialogResult.Yes)
-            {
-                _searchManager.CancelIndexing();
-                lblSearchInfo.Text = "Indexing cancelled";
-                UpdateSearchSourceUI();
-            }
+            OfferToPauseIndexing();
             return;
         }
 
-        if (_searchManager.IsDatabaseReady)
+        // An index that stopped part way through: resuming is far cheaper than starting over,
+        // so that is offered first.
+        var state = _searchManager.IndexingState;
+        if (!state.IsComplete && state.HasSearchableData)
         {
-            // Database is ready - offer to rebuild
-            var result = MessageBox.Show(
+            var pending = state.Scopes.Count(s => s.Status != IndexScopeStatus.Completed);
+            var resume = MessageBox.Show(
+                "Resume Indexing?\n\n" +
+                $"Indexed so far: {state.TotalFiles + state.TotalFolders:N0} items\n" +
+                $"Still to index: {pending} location(s)\n\n" +
+                "Resuming continues from the last checkpoint instead of scanning everything again.\n" +
+                "Choose No to rebuild the whole index from scratch.",
+                "Resume Indexing",
+                MessageBoxButtons.YesNoCancel,
+                MessageBoxIcon.Question);
+
+            if (resume == DialogResult.Cancel) return;
+
+            if (resume == DialogResult.Yes)
+            {
+                StopFileWatcher();
+                SetIndexingUIState(true);
+                await _searchManager.ResumeIndexingAsync();
+                return;
+            }
+        }
+        else if (_searchManager.IsDatabaseReady)
+        {
+            var rebuild = MessageBox.Show(
                 "Rebuild Search Index?\n\n" +
                 $"Current index: {_searchManager.IndexingStatus.TotalItems:N0} items\n" +
                 $"Last updated: {_searchManager.IndexingStatus.IndexingCompletedAt:g}\n\n" +
-                "This will scan all drives and rebuild the file index.\n" +
-                "The process runs in the background.\n\n" +
-                "• All drives indexed in parallel\n" +
-                "• System folders excluded\n" +
-                "• File monitoring resumes after",
+                "The index is rebuilt in the background, in phases:\n" +
+                "• Downloads and recent files first, so search returns quickly\n" +
+                "• Then each other drive, one at a time\n" +
+                "• The system drive last\n\n" +
+                "Search is unavailable until the first phase finishes.",
                 "Rebuild Index",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question);
 
-            if (result != DialogResult.Yes) return;
-
-            // Stop file watcher during rebuild
-            StopFileWatcher();
-
-            // Start rebuild
-            SetIndexingUIState(true);
-            await _searchManager.RebuildIndexAsync();
+            if (rebuild != DialogResult.Yes) return;
         }
         else
         {
-            // First time indexing or failed - show info and start
-            var result = MessageBox.Show(
-                "Build Local Search Index?\n\n" +
-                "This will scan all drives and build a local file index for faster searching.\n\n" +
-                "Benefits:\n" +
-                "• Faster search results than Windows Search\n" +
-                "• Works even when Windows Search is disabled\n" +
-                "• Searches continue to work using Windows Search during build\n\n" +
-                "The process runs in the background and may take several minutes.",
+            var build = MessageBox.Show(
+                "Build Search Index?\n\n" +
+                "Your drives are scanned in the background, in phases:\n" +
+                "• Downloads and recent files first, so search returns within seconds\n" +
+                "• Then each other drive, one at a time - searchable as each one finishes\n" +
+                "• The system drive last\n\n" +
+                "Progress is saved as it goes, so closing the app does not lose the work.",
                 "Build Index",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Information);
 
-            if (result != DialogResult.Yes) return;
-
-            SetIndexingUIState(true);
-            await _searchManager.RebuildIndexAsync();
+            if (build != DialogResult.Yes) return;
         }
+
+        // Stop the watcher: it writes to the same database the build is writing to.
+        StopFileWatcher();
+        SetIndexingUIState(true);
+        await _searchManager.RebuildIndexAsync();
+    }
+
+    private void OfferToPauseIndexing()
+    {
+        var cancelResult = MessageBox.Show(
+            "Indexing is in progress.\n\n" +
+            "Would you like to pause it? Everything indexed so far is kept, and it resumes " +
+            "from the last checkpoint next time.",
+            "Indexing In Progress",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question);
+
+        if (cancelResult != DialogResult.Yes) return;
+
+        _searchManager.CancelIndexing();
+        lblSearchInfo.Text = "Indexing paused - progress saved";
+        UpdateSearchSourceUI();
     }
 
     #endregion
@@ -91,20 +117,50 @@ public partial class MainForm
             btnSettings.Enabled = !isIndexing;
             progressBar.Visible = isIndexing;
 
-            if (isIndexing)
-            {
-                btnIndex.Text = "⏳ Indexing...";
-                lblWatchStatus.Text = "Building local database...";
-                lblWatchStatus.ForeColor = AppColors.Warning;
-
-                // Keep search box enabled - can still search using Windows Search
-                txtSearch.Enabled = true;
-            }
-            else
+            if (!isIndexing)
             {
                 UpdateSearchSourceUI();
+                return;
             }
+
+            btnIndex.Text = "⏳ Indexing...";
+            ApplySearchLock();
         });
+    }
+
+    /// <summary>
+    /// Disable the search box while there is nothing to search, and re-enable it the moment the
+    /// first phase publishes - which is the whole point of indexing Downloads and recent files
+    /// first. The lock only covers the window where a search could return nothing at all.
+    /// </summary>
+    private void ApplySearchLock()
+    {
+        var locked = _searchManager.IsSearchLocked;
+
+        txtSearch.Enabled = !locked;
+
+        if (locked)
+        {
+            dgvResults.Visible = false;
+            pnlRecentSearches.Visible = false;
+            lblSearchInfo.Text = "App is indexing... search will be available shortly";
+            lblWatchStatus.Text = "App is indexing...";
+            lblWatchStatus.ForeColor = AppColors.Warning;
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(txtSearch.Text) || txtSearch.Text == SearchPlaceholder)
+            {
+                pnlRecentSearches.Visible = true;
+                LoadRecentSearches();
+            }
+
+            if (_searchManager.IsIndexing)
+            {
+                lblWatchStatus.Text = "Indexing continues in the background - search is available";
+                lblWatchStatus.ForeColor = AppColors.Warning;
+            }
+        }
     }
 
     #endregion
@@ -115,15 +171,39 @@ public partial class MainForm
     {
         SafeInvoke(() =>
         {
-            lblSearchInfo.Text = $"📂 {progress.TotalFolders:N0} folders  •  📄 {progress.TotalFiles:N0} files  •  ⚡ {progress.ItemsPerSecond:N0}/sec";
-            lblWatchStatus.Text = $"Indexing: {TruncatePath(progress.CurrentPath, 80)}";
+            if (_searchManager.IsSearchLocked)
+            {
+                lblSearchInfo.Text = $"App is indexing... {progress.PhaseLabel} " +
+                                     $"({progress.TotalFiles + progress.TotalFolders:N0} items)";
+            }
+            else
+            {
+                lblSearchInfo.Text =
+                    $"📂 {progress.TotalFolders:N0} folders  •  📄 {progress.TotalFiles:N0} files  •  " +
+                    $"⚡ {progress.ItemsPerSecond:N0}/sec";
+            }
+
+            lblWatchStatus.Text = $"Phase {(int)progress.Phase} of 3 · {progress.PhaseLabel} " +
+                                  $"({progress.CompletedScopes}/{progress.TotalScopes} done): " +
+                                  TruncatePath(progress.CurrentPath, 60);
             lblWatchStatus.ForeColor = AppColors.Warning;
 
-            if ((progress.TotalFiles + progress.TotalFolders) % 50000 == 0)
-                UpdateTrayStatus($"Indexing: {progress.TotalFiles + progress.TotalFolders:N0} items...");
+            UpdateTrayStatus($"Indexing: {progress.TotalFiles + progress.TotalFolders:N0} items...");
+        });
+    }
 
-            if ((progress.TotalFiles + progress.TotalFolders) % 10000 == 0)
-                _ = UpdateTotalCountAsync();
+    /// <summary>
+    /// One phase or drive has finished and its data is searchable. Unlocks the search box on the
+    /// first one, and refreshes the counts on every one.
+    /// </summary>
+    private void OnScopePublished(string scopeLabel)
+    {
+        SafeInvoke(async () =>
+        {
+            ApplySearchLock();
+            lblWatchStatus.Text = $"✓ {scopeLabel} indexed - now searchable";
+            lblWatchStatus.ForeColor = AppColors.Success;
+            await UpdateTotalCountAsync();
         });
     }
 
