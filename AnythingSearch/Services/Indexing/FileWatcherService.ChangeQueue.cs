@@ -12,9 +12,29 @@ namespace AnythingSearch.Services;
 ///    for MaxChangeAgeMs - a path that keeps receiving events can never starve the queue.
 /// 2. When the queue is full it is drained immediately (ignoring the debounce) instead of
 ///    dropping the incoming change.
+///
+/// <see cref="QueueChange"/> runs on the FileSystemWatcher callback thread, which has a hard
+/// deadline: events Windows cannot hand over are dropped from a fixed kernel buffer and reported
+/// as an overflow. So it does no allocation it can avoid, and nothing here calls
+/// ConcurrentDictionary.Count - that property takes every one of the dictionary's internal locks,
+/// which on the one path every file-system event on the machine goes through turns the queue into
+/// the bottleneck it exists to prevent. <see cref="_pendingCount"/> tracks the size instead.
 /// </summary>
 public partial class FileWatcherService
 {
+    /// <summary>
+    /// Size of <see cref="_pendingChanges"/>, maintained with Interlocked. See the class remarks
+    /// for why the dictionary's own Count is not used on this path.
+    /// </summary>
+    private int _pendingCount;
+
+    /// <summary>
+    /// Set while a high-water-mark drain has been scheduled but not yet claimed. Without it every
+    /// single event arriving above the mark queued another thread-pool item, and all but one of
+    /// them existed only to lose the race for the batch.
+    /// </summary>
+    private int _drainScheduled;
+
     /// <summary>
     /// Queue a change for processing with debouncing
     /// </summary>
@@ -23,7 +43,9 @@ public partial class FileWatcherService
         if (!_isRunning) return;
         if (ShouldIgnore(path)) return;
 
-        var now = DateTime.Now;
+        // UtcNow, not Now: these stamps are only ever compared with each other, and Now adds a
+        // time-zone conversion to every event on a path that handles every change on the machine.
+        var now = DateTime.UtcNow;
 
         var change = new FileSystemChange
         {
@@ -38,23 +60,49 @@ public partial class FileWatcherService
         // The newest event wins: it describes the current state of the path. Keeping an older
         // "Deleted" over a newer "Created" used to drop files that are saved atomically
         // (write temp -> delete target -> rename), which is how most editors and git write files.
-        _pendingChanges.AddOrUpdate(path, change, (key, existing) =>
+        //
+        // Spelled out as TryGetValue/TryUpdate/TryAdd rather than AddOrUpdate so that every change
+        // in the queue's SIZE goes through exactly one atomic operation the counter can be paired
+        // with. AddOrUpdate can run its add factory and then discard the result after losing a
+        // race, which would leave _pendingCount drifting further from the truth with every event.
+        int pending;
+        while (true)
         {
-            // A plain Modified must not erase a queued Created/Deleted/Renamed for the same path
-            if (type == ChangeType.Modified && existing.Type != ChangeType.Modified)
+            if (_pendingChanges.TryGetValue(path, out var existing))
             {
-                existing.Timestamp = now;
-                return existing;
+                // A plain Modified must not erase a queued Created/Deleted/Renamed for the same path
+                if (type == ChangeType.Modified && existing.Type != ChangeType.Modified)
+                {
+                    existing.Timestamp = now;
+                    pending = Volatile.Read(ref _pendingCount);
+                    break;
+                }
+
+                change.FirstSeen = existing.FirstSeen;
+
+                // Replaced or flushed since the read - look again rather than overwrite blindly.
+                if (!_pendingChanges.TryUpdate(path, change, existing)) continue;
+
+                pending = Volatile.Read(ref _pendingCount);
+                break;
             }
 
-            change.FirstSeen = existing.FirstSeen;
-            return change;
-        });
+            if (_pendingChanges.TryAdd(path, change))
+            {
+                pending = Interlocked.Increment(ref _pendingCount);
+                break;
+            }
+        }
 
         // Drain as soon as the queue is filling up, so we never have to drop a change
-        if (_pendingChanges.Count >= HighWaterMark && Volatile.Read(ref _processing) == 0)
+        if (pending >= HighWaterMark && Interlocked.CompareExchange(ref _drainScheduled, 1, 0) == 0)
         {
-            Task.Run(async () => await ProcessChangesAsync(_pendingChanges.Count >= MaxPendingChanges));
+            bool flushAll = pending >= MaxPendingChanges;
+            Task.Run(async () =>
+            {
+                try { await ProcessChangesAsync(flushAll); }
+                finally { Volatile.Write(ref _drainScheduled, 0); }
+            });
         }
     }
 
@@ -80,7 +128,8 @@ public partial class FileWatcherService
         // Refused once shutdown has begun. This is the single place a batch is claimed, so it is
         // also the single place that has to say no - otherwise a batch could start writing to the
         // database moments before the owner disposes it.
-        if (_stopping || _pendingChanges.IsEmpty) return;
+        if (_stopping) return;
+        if (_pendingChanges.IsEmpty && _deferredDirectories.Count == 0) return;
 
         // Claim the batch atomically. The check-then-set this replaced could let the 3-second
         // timer and the high-water-mark drain both get past it, so two batches applied the same
@@ -90,37 +139,16 @@ public partial class FileWatcherService
 
         try
         {
-            // Take everything that has been quiet long enough, plus anything that has been
-            // waiting too long overall (a continuously written file never goes quiet).
-            var now = DateTime.Now;
-            var quietCutoff = now.AddMilliseconds(-DebounceMs);
-            var ageCutoff = now.AddMilliseconds(-MaxChangeAgeMs);
+            // Everything one batch is allowed to index from directory walks, shared between the
+            // backlog below and whatever the batch's own changes turn up. This is the cap that
+            // keeps a single notification from monopolising the database connection searches use.
+            ResetWalkBudget();
 
-            var changesToProcess = _pendingChanges
-                .Select(kvp => kvp.Value)
-                .Where(c => flushAll || c.Timestamp < quietCutoff || c.FirstSeen < ageCutoff)
-                .ToList();
+            var sortedChanges = TakeBatch(flushAll);
 
-            if (changesToProcess.Count == 0)
+            // Nothing new, but an earlier batch may still owe work.
+            if (sortedChanges.Count == 0 && _deferredDirectories.Count == 0)
                 return;
-
-            // Remove processed items from dictionary
-            foreach (var change in changesToProcess)
-            {
-                _pendingChanges.TryRemove(change.Path, out _);
-            }
-
-            // Sort: process deletes first, then creates, then renames, then modifications
-            var sortedChanges = changesToProcess
-                .OrderBy(c => c.Type switch
-                {
-                    ChangeType.Deleted => 0,
-                    ChangeType.Created => 1,
-                    ChangeType.Renamed => 2,
-                    ChangeType.Modified => 3,
-                    _ => 4
-                })
-                .ToList();
 
             var (processed, errors) = await ApplyChangesAsync(sortedChanges);
 
@@ -131,8 +159,6 @@ public partial class FileWatcherService
                     : $"Auto-watch: {processed} change(s) synced";
                 StatusChanged?.Invoke(message);
             }
-
-            _lastProcessTime = DateTime.Now;
         }
         catch (Exception ex)
         {
@@ -143,6 +169,46 @@ public partial class FileWatcherService
             Volatile.Write(ref _processing, 0);
         }
     }
+
+    /// <summary>
+    /// Remove the changes that are ready to apply and return them in the order they must be
+    /// applied: deletes, then creates, then renames, then modifications.
+    /// </summary>
+    private List<FileSystemChange> TakeBatch(bool flushAll)
+    {
+        // Take everything that has been quiet long enough, plus anything that has been
+        // waiting too long overall (a continuously written file never goes quiet).
+        var now = DateTime.UtcNow;
+        var quietCutoff = now.AddMilliseconds(-DebounceMs);
+        var ageCutoff = now.AddMilliseconds(-MaxChangeAgeMs);
+
+        var batch = new List<FileSystemChange>();
+        foreach (var kvp in _pendingChanges)
+        {
+            var change = kvp.Value;
+            if (!flushAll && change.Timestamp >= quietCutoff && change.FirstSeen >= ageCutoff) continue;
+
+            if (_pendingChanges.TryRemove(kvp))
+            {
+                Interlocked.Decrement(ref _pendingCount);
+                batch.Add(change);
+            }
+        }
+
+        // Sorted in place rather than through OrderBy: this runs on every batch and the old
+        // Select/Where/ToList/OrderBy/ToList chain built three copies of it to no purpose.
+        batch.Sort(static (a, b) => Rank(a.Type).CompareTo(Rank(b.Type)));
+        return batch;
+    }
+
+    private static int Rank(ChangeType type) => type switch
+    {
+        ChangeType.Deleted => 0,
+        ChangeType.Created => 1,
+        ChangeType.Renamed => 2,
+        ChangeType.Modified => 3,
+        _ => 4
+    };
 
     /// <summary>
     /// Apply a sorted batch inside a single transaction instead of one implicit SQLite
@@ -156,8 +222,14 @@ public partial class FileWatcherService
         await _database.BeginIncrementalTransactionAsync();
         try
         {
+            // Before the batch's own changes, not after: a backlog that is always queued behind
+            // whatever arrived in the last three seconds on a busy machine never drains at all.
+            await DrainDeferredDirectoriesAsync();
+
             foreach (var change in sortedChanges)
             {
+                if (_stopping) break;
+
                 try
                 {
                     switch (change.Type)

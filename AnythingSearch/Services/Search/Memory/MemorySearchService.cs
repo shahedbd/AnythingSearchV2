@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using AnythingSearch.Helper;
 using AnythingSearch.Models;
 using Timer = System.Threading.Timer;
@@ -27,28 +28,54 @@ public sealed partial class MemorySearchService : IDisposable
 
     private volatile MemoryFileIndex? _snapshot;
 
-    // Pending changes are accumulated in ordinary mutable collections under _deltaLock, and an
-    // immutable copy is published for readers only when one is actually asked for. Rebuilding
-    // that copy on every single change made a large batch of file-system events - a branch
-    // checkout, an installer unpacking - quadratic in the size of the batch.
-    private readonly Dictionary<string, FileEntry> _pendingAdded = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _pendingRemoved = new(StringComparer.OrdinalIgnoreCase);
-    private readonly object _deltaLock = new();
-    private volatile Delta? _publishedDelta = Delta.Empty;
+    /// <summary>
+    /// The pending changes, keyed by path: a non-null value is the current state of that path, a
+    /// null value means it has been deleted since the snapshot was taken. One map rather than an
+    /// added dictionary plus a removed set, because a search needs exactly one question answered
+    /// per result row - "does the delta speak for this path?" - and that is one lookup here.
+    ///
+    /// Concurrent, and read without copying. The file watcher writes to this from a background
+    /// thread while searches read it on every keystroke, and the two previous shapes both made
+    /// that collision expensive. Rebuilding an immutable copy on every single change made a large
+    /// batch of events quadratic; deferring that copy to the next reader instead moved the cost
+    /// onto the search box, which then rebuilt a 60,000 entry list and hash set - under the same
+    /// lock the watcher was taking thousands of times a second - for every character typed.
+    /// Striped locking means a writer now blocks a reader only when they hit the same bucket.
+    /// </summary>
+    private ConcurrentDictionary<string, FileEntry?> _pending = NewPendingMap();
+
+    /// <summary>The current pending map. Not a volatile field: it is swapped with Interlocked.</summary>
+    private ConcurrentDictionary<string, FileEntry?> Pending => Volatile.Read(ref _pending);
+
+    /// <summary>
+    /// Size of <see cref="_pending"/>, and how much of it is deletions. Tracked with Interlocked
+    /// because ConcurrentDictionary.Count takes every one of the map's internal locks, and this
+    /// is consulted on each change and on each search. Approximate under concurrency by design -
+    /// it drives a size guard and a status label, neither of which needs an exact figure.
+    /// </summary>
+    private int _pendingTotal;
+    private int _pendingRemoved;
 
     private int _rebuildInFlight;   // 0 = idle, 1 = building
     private int _rebuildQueued;     // a rebuild was asked for while one was already running
+    /// <summary>
+    /// When the last rebuild finished, on the Environment.TickCount64 clock. Zero, not
+    /// long.MinValue, so the very first churn-driven rebuild sees the machine's uptime as the
+    /// elapsed gap and runs immediately, instead of an arithmetic overflow that reads as a
+    /// rebuild in the future and holds it back for a cooldown it never earned.
+    /// </summary>
+    private long _lastRebuildTicks;
     private volatile bool _disposed;
 
     /// <summary>Rebuild once this many pending changes have accumulated.</summary>
     private const int DeltaRebuildThreshold = 20_000;
 
     /// <summary>
-    /// Stop growing the delta past this. Every search copies the delta and scans it, so an
-    /// unbounded delta makes searching get slower the busier the disk is - exactly backwards.
-    /// Past this point the pending changes are dropped and the snapshot is treated as stale
-    /// instead: searches stay fast and the next rebuild picks everything up from the database,
-    /// which is the durable copy in any case.
+    /// Stop growing the delta past this. Every search scans the delta, so an unbounded delta makes
+    /// searching get slower the busier the disk is - exactly backwards. Past this point the
+    /// pending changes are dropped and the snapshot is treated as stale instead: searches stay
+    /// fast and the next rebuild picks everything up from the database, which is the durable copy
+    /// in any case.
     /// </summary>
     private const int DeltaOverflowLimit = 60_000;
 
@@ -82,6 +109,9 @@ public sealed partial class MemorySearchService : IDisposable
         _rebuildTimer = new Timer(_ => RequestRebuild("periodic refresh"), null, Timeout.Infinite, Timeout.Infinite);
     }
 
+    private static ConcurrentDictionary<string, FileEntry?> NewPendingMap() =>
+        new(Environment.ProcessorCount * 2, 1024, StringComparer.OrdinalIgnoreCase);
+
     public bool IsReady => _snapshot != null;
 
     /// <summary>
@@ -96,8 +126,9 @@ public sealed partial class MemorySearchService : IDisposable
             var snapshot = _snapshot;
             if (snapshot == null) return 0;
 
-            lock (_deltaLock)
-                return snapshot.Count + _pendingAdded.Count - _pendingRemoved.Count;
+            int removed = Volatile.Read(ref _pendingRemoved);
+            int added = Volatile.Read(ref _pendingTotal) - removed;
+            return snapshot.Count + added - removed;
         }
     }
 
@@ -122,47 +153,51 @@ public sealed partial class MemorySearchService : IDisposable
 
     /// <summary>
     /// Record one change. <paramref name="entry"/> is the current state of the path, or null when
-    /// it no longer exists. Constant time: the immutable view readers use is built later, once.
+    /// it no longer exists. Constant time, and it takes no lock a search could be waiting on.
     /// </summary>
     private void Mutate(string path, FileEntry? entry)
     {
         if (_disposed || _snapshot == null) return;
 
-        int pending;
-        bool overflowed;
-        lock (_deltaLock)
+        var pending = Pending;
+        int total;
+
+        if (pending.TryAdd(path, entry))
         {
-            if (entry == null)
-            {
-                _pendingAdded.Remove(path);
-                _pendingRemoved.Add(path);
-            }
-            else
-            {
-                _pendingRemoved.Remove(path);
-                _pendingAdded[path] = entry;
-            }
+            total = Interlocked.Increment(ref _pendingTotal);
+            if (entry == null) Interlocked.Increment(ref _pendingRemoved);
+        }
+        else
+        {
+            pending.TryGetValue(path, out var previous);
+            pending[path] = entry;
+            total = Volatile.Read(ref _pendingTotal);
 
-            pending = _pendingAdded.Count + _pendingRemoved.Count;
-            overflowed = pending > DeltaOverflowLimit;
-
-            if (overflowed)
-            {
-                // Too many changes to keep carrying. Drop them and let the rebuild read the
-                // current state from the database, rather than making every search pay for them.
-                _pendingAdded.Clear();
-                _pendingRemoved.Clear();
-                pending = 0;
-            }
-
-            _publishedDelta = null;   // readers rebuild it on their next search
+            if (previous == null && entry != null) Interlocked.Decrement(ref _pendingRemoved);
+            else if (previous != null && entry == null) Interlocked.Increment(ref _pendingRemoved);
         }
 
-        if (overflowed)
-            RequestRebuild("more changes than the overlay can carry");
-        else if (pending >= DeltaRebuildThreshold)
-            RequestRebuild("delta threshold reached");
-        else if (pending <= 2 || (pending & 0xFF) == 0)
+        if (total > DeltaOverflowLimit)
+        {
+            // Too many changes to keep carrying. Drop them and let the rebuild read the current
+            // state from the database, rather than making every search pay for them. The map is
+            // replaced rather than cleared so a search already walking the old one is unaffected.
+            //
+            // Cooldown respected: a sustained copy or install refills the delta every few seconds,
+            // and starting a full rebuild each time it does means reading the entire database over
+            // and over while the user is trying to search.
+            if (ReferenceEquals(Interlocked.CompareExchange(ref _pending, NewPendingMap(), pending), pending))
+            {
+                Interlocked.Exchange(ref _pendingTotal, 0);
+                Interlocked.Exchange(ref _pendingRemoved, 0);
+                RequestRebuild("more changes than the overlay can carry", respectCooldown: true);
+            }
+        }
+        else if (total >= DeltaRebuildThreshold)
+        {
+            RequestRebuild("delta threshold reached", respectCooldown: true);
+        }
+        else if (total <= 2 || (total & 0xFF) == 0)
         {
             // Throttled: indexing one new directory can raise thousands of changes, and
             // rescheduling the timer for every one of them contends on the shared timer queue for
@@ -172,41 +207,29 @@ public sealed partial class MemorySearchService : IDisposable
         }
     }
 
-    /// <summary>
-    /// The immutable view of the pending changes, rebuilt only after something has changed. A
-    /// search never mutates it, so it can be read without holding the lock once published.
-    /// </summary>
-    private Delta PublishDelta()
-    {
-        var published = _publishedDelta;
-        if (published != null) return published;
-
-        lock (_deltaLock)
-        {
-            if (_publishedDelta == null)
-            {
-                // Shadowed = paths the snapshot must not answer for. That is everything deleted
-                // since the snapshot AND everything re-added since: a file the snapshot already
-                // knows about but that has been written again must be shown from the delta, with
-                // its current size and timestamp, rather than listed twice.
-                var shadowed = new HashSet<string>(_pendingRemoved, StringComparer.OrdinalIgnoreCase);
-                foreach (var path in _pendingAdded.Keys) shadowed.Add(path);
-
-                _publishedDelta = new Delta(new List<FileEntry>(_pendingAdded.Values), shadowed);
-            }
-
-            return _publishedDelta;
-        }
-    }
-
     #endregion
 
     #region Rebuild
 
     /// <summary>Queue a snapshot rebuild unless one is already running.</summary>
-    public void RequestRebuild(string reason)
+    /// <param name="respectCooldown">
+    /// True for rebuilds driven by file-system churn, which arrive as fast as the disk is busy.
+    /// Those wait out <see cref="RebuildCooldownMs"/> since the last one; the handful of rebuilds
+    /// that make the app usable at all - the initial load, a phase publishing - do not.
+    /// </param>
+    public void RequestRebuild(string reason, bool respectCooldown = false)
     {
         if (_disposed) return;
+
+        if (respectCooldown)
+        {
+            long since = Environment.TickCount64 - Volatile.Read(ref _lastRebuildTicks);
+            if (since < RebuildCooldownMs)
+            {
+                _rebuildTimer.Change((int)(RebuildCooldownMs - since), Timeout.Infinite);
+                return;
+            }
+        }
 
         if (Interlocked.CompareExchange(ref _rebuildInFlight, 1, 0) != 0)
         {
@@ -230,29 +253,22 @@ public sealed partial class MemorySearchService : IDisposable
                 // rebuild are kept: they may or may not be in the snapshot, and keeping a
                 // redundant one is harmless while losing one is not. The entries are compared by
                 // reference so a path written again mid-rebuild keeps its newer entry.
-                Dictionary<string, FileEntry> consumedAdded;
-                HashSet<string> consumedRemoved;
-                lock (_deltaLock)
-                {
-                    consumedAdded = new Dictionary<string, FileEntry>(_pendingAdded, StringComparer.OrdinalIgnoreCase);
-                    consumedRemoved = new HashSet<string>(_pendingRemoved, StringComparer.OrdinalIgnoreCase);
-                }
+                var consumedFrom = Pending;
+                var consumed = consumedFrom.ToArray();
 
                 var index = MemoryIndexBuilder.Build(_databasePath, null, CancellationToken.None);
 
-                lock (_deltaLock)
+                // Skipped when the map was replaced meanwhile (an overflow): everything in the
+                // captured copy went with it, so there is nothing left to retire.
+                if (ReferenceEquals(Pending, consumedFrom))
                 {
-                    foreach (var consumed in consumedAdded)
+                    foreach (var entry in consumed)
                     {
-                        if (_pendingAdded.TryGetValue(consumed.Key, out var current)
-                            && ReferenceEquals(current, consumed.Value))
-                        {
-                            _pendingAdded.Remove(consumed.Key);
-                        }
-                    }
+                        if (!consumedFrom.TryRemove(entry)) continue;
 
-                    foreach (var path in consumedRemoved) _pendingRemoved.Remove(path);
-                    _publishedDelta = null;
+                        Interlocked.Decrement(ref _pendingTotal);
+                        if (entry.Value == null) Interlocked.Decrement(ref _pendingRemoved);
+                    }
                 }
 
                 _snapshot = index;
@@ -284,6 +300,9 @@ public sealed partial class MemorySearchService : IDisposable
             finally
             {
                 _firstSnapshot.TrySetResult();
+
+                // Stamped before the flag is cleared, so the cooldown covers the gap.
+                Volatile.Write(ref _lastRebuildTicks, Environment.TickCount64);
                 Volatile.Write(ref _rebuildInFlight, 0);
 
                 // Hand a queued request to the timer rather than starting it straight away. Going
@@ -300,12 +319,9 @@ public sealed partial class MemorySearchService : IDisposable
     public void Invalidate()
     {
         _snapshot = null;
-        lock (_deltaLock)
-        {
-            _pendingAdded.Clear();
-            _pendingRemoved.Clear();
-            _publishedDelta = Delta.Empty;
-        }
+        Volatile.Write(ref _pending, NewPendingMap());
+        Interlocked.Exchange(ref _pendingTotal, 0);
+        Interlocked.Exchange(ref _pendingRemoved, 0);
     }
 
     #endregion
@@ -315,32 +331,5 @@ public sealed partial class MemorySearchService : IDisposable
         _disposed = true;
         _rebuildTimer.Dispose();
         _snapshot = null;
-    }
-
-    /// <summary>
-    /// Immutable view of the changes not yet folded into the snapshot. Published by
-    /// <see cref="PublishDelta"/> and never modified afterwards, so searches read it without a
-    /// lock.
-    /// </summary>
-    private sealed class Delta
-    {
-        public static readonly Delta Empty = new(
-            new List<FileEntry>(), new HashSet<string>(StringComparer.OrdinalIgnoreCase));
-
-        /// <summary>Entries the delta answers for: created or rewritten since the snapshot.</summary>
-        public List<FileEntry> Added { get; }
-
-        /// <summary>
-        /// Paths the snapshot must stay quiet about - every deleted path, plus every path in
-        /// <see cref="Added"/>, so a file the snapshot already knows about is shown once, from
-        /// the delta, with its current metadata.
-        /// </summary>
-        public HashSet<string> Shadowed { get; }
-
-        public Delta(List<FileEntry> added, HashSet<string> shadowed)
-        {
-            Added = added;
-            Shadowed = shadowed;
-        }
     }
 }

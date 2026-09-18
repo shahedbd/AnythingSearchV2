@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using AnythingSearch.Models;
 
 namespace AnythingSearch.Services.Search.Memory;
@@ -8,6 +9,10 @@ namespace AnythingSearch.Services.Search.Memory;
 ///
 /// See MemorySearchService.cs for the snapshot lifecycle, the delta that is layered here, and the
 /// rebuild policy that keeps that delta small.
+///
+/// Nothing on this path copies the delta or takes a lock on it. The whole point of the overlay is
+/// that a file created a second ago is findable immediately; if reading it costs a search more
+/// than the scan of the entire index does, the overlay has taken more than it gave.
 /// </summary>
 public sealed partial class MemorySearchService
 {
@@ -31,7 +36,11 @@ public sealed partial class MemorySearchService
         }
 
         var indices = snapshot.Search(query, limit, cancellationToken, out totalMatches);
-        var delta = PublishDelta();
+
+        // Read once. The watcher may add to the map while this search runs; picking the map up
+        // here means the search sees one consistent-enough view and never waits on the writer.
+        var pending = Pending;
+        bool hasPending = Volatile.Read(ref _pendingTotal) > 0;
 
         results = new List<FileEntry>(indices.Count);
         foreach (var index in indices)
@@ -40,7 +49,7 @@ public sealed partial class MemorySearchService
             // written again since. MergeAdded puts the current version back for the latter.
             // The total can be off by the few such rows that fall outside this page, which is not
             // something a result count of thousands makes visible.
-            if (delta.Shadowed.Count > 0 && delta.Shadowed.Contains(snapshot.PathOf(index)))
+            if (hasPending && pending.ContainsKey(snapshot.PathOf(index)))
             {
                 totalMatches--;
                 continue;
@@ -49,24 +58,40 @@ public sealed partial class MemorySearchService
             results.Add(snapshot.Materialize(index));
         }
 
-        if (delta.Added.Count > 0)
-            MergeAdded(query, limit, delta, results, ref totalMatches);
+        if (hasPending)
+            MergeAdded(query, limit, pending, results, ref totalMatches, cancellationToken);
 
         return true;
     }
 
     /// <summary>
-    /// Fold entries created since the snapshot into the result list. This scans the whole delta,
+    /// Fold entries created since the snapshot into the result list. This walks the whole delta,
     /// so its cost is bounded only by how large the delta is allowed to grow - which is what
     /// <see cref="DeltaOverflowLimit"/> exists to cap.
     /// </summary>
-    private void MergeAdded(string query, int limit, Delta delta, List<FileEntry> results, ref int totalMatches)
+    private void MergeAdded(
+        string query,
+        int limit,
+        ConcurrentDictionary<string, FileEntry?> pending,
+        List<FileEntry> results,
+        ref int totalMatches,
+        CancellationToken cancellationToken)
     {
         var terms = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        int added = 0;
+        if (terms.Length == 0) return;
 
-        foreach (var entry in delta.Added)
+        int added = 0;
+        int probes = 0;
+
+        foreach (var kvp in pending)
         {
+            // Superseded by a newer keystroke. The snapshot scan already bails on cancellation
+            // (see MemoryFileIndex.Search); this used to walk every pending entry regardless, so
+            // on a busy disk each abandoned keystroke still paid for the full delta.
+            if ((++probes & 0x3FF) == 0 && cancellationToken.IsCancellationRequested) return;
+
+            var entry = kvp.Value;
+            if (entry == null) continue;              // deleted since the snapshot
             if (!MatchesAllTerms(entry, terms)) continue;
 
             results.Add(entry);

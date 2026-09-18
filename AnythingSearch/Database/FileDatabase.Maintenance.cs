@@ -71,6 +71,42 @@ public partial class FileDatabase
     }
 
     /// <summary>
+    /// Drop folder rows nothing refers to any more.
+    ///
+    /// Deleting a folder removes its entries from Files but leaves the Folders row behind, and
+    /// only the file watcher ever deletes anything - so on a machine that has been watched for a
+    /// while this is pure accumulation from build output, temp trees and uninstalled programs.
+    ///
+    /// It is not harmless dead weight. The in-memory snapshot loads every folder path into one
+    /// contiguous blob (MemoryIndexBuilder), and a search scans that entire blob once per term to
+    /// find folder-path matches. Orphans make every keystroke scan further for results that no
+    /// longer exist.
+    ///
+    /// Called from startup maintenance, right after <see cref="EnsureUniqueEntriesAsync"/>, which
+    /// guarantees the (FolderId, Name) index the EXISTS check below seeks on.
+    /// </summary>
+    /// <returns>The number of folder rows removed.</returns>
+    public async Task<long> PruneOrphanFoldersAsync()
+    {
+        using var dbLock = await LockAsync();
+
+        var removed = await ExecuteScalarLongAsync(
+            "SELECT COUNT(*) FROM Folders WHERE NOT EXISTS (SELECT 1 FROM Files WHERE Files.FolderId = Folders.Id)");
+        if (removed == 0) return 0;
+
+        await ExecuteNonQueryAsync(
+            "DELETE FROM Folders WHERE NOT EXISTS (SELECT 1 FROM Files WHERE Files.FolderId = Folders.Id)");
+
+        // The cache maps path -> id and has just been invalidated for every pruned path. Left in
+        // place, the next file written under one of those paths would be stored against a folder
+        // id that no longer exists, and would come back from a search with the wrong path.
+        _folderCache.Clear();
+
+        MaintenanceStatusChanged?.Invoke($"Removed {removed:N0} empty folder entries from the index");
+        return removed;
+    }
+
+    /// <summary>
     /// Compact the database when a large share of it is free pages.
     ///
     /// Deleting rows only marks pages free inside the file, so after the duplicate clean-up the

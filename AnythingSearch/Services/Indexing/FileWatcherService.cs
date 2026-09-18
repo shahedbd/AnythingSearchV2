@@ -11,8 +11,15 @@ namespace AnythingSearch.Services;
 /// Watches the file system and keeps the SQLite index in sync after the initial build.
 ///
 /// Split into partial classes: this file owns watcher lifecycle and raw OS event wiring;
-/// see FileWatcherService.ChangeQueue.cs for the debounce/batch queue and
-/// FileWatcherService.SyncHandlers.cs for the database sync logic per change type.
+/// see FileWatcherService.ChangeQueue.cs for the debounce/batch queue,
+/// FileWatcherService.SyncHandlers.cs for the database sync logic per change type,
+/// FileWatcherService.DirectoryWalk.cs for the budgeted walk of a newly created folder, and
+/// FileWatcherService.Filters.cs for the allocation-free ignore list.
+///
+/// The governing constraint is that none of this may slow the search box down. The watcher writes
+/// through the same SQLite connection searches fall back to, and mirrors into the same in-memory
+/// overlay every search scans, so every path here is bounded: a fixed amount of indexing work per
+/// batch, no unbounded re-walks, and no allocation on the OS callback thread.
 /// </summary>
 public partial class FileWatcherService : IDisposable
 {
@@ -36,7 +43,6 @@ public partial class FileWatcherService : IDisposable
     /// database after <see cref="StopAsync"/> has been called.
     /// </summary>
     private volatile bool _stopping;
-    private DateTime _lastProcessTime = DateTime.MinValue;
 
     // Buffer overflow protection
     private const int MaxPendingChanges = 10000;
@@ -171,6 +177,8 @@ public partial class FileWatcherService : IDisposable
 
             _watchers.Clear();
             _pendingChanges.Clear();
+            Volatile.Write(ref _pendingCount, 0);
+            Volatile.Write(ref _drainScheduled, 0);
 
             StatusChanged?.Invoke("File system monitoring stopped");
         }
@@ -249,7 +257,8 @@ public partial class FileWatcherService : IDisposable
     /// </summary>
     public (int WatcherCount, int PendingChanges, bool IsRunning) GetStatus()
     {
-        return (_watchers.Count, _pendingChanges.Count, _isRunning);
+        // _pendingCount, not _pendingChanges.Count: see FileWatcherService.ChangeQueue.cs.
+        return (_watchers.Count, Volatile.Read(ref _pendingCount), _isRunning);
     }
 
     /// <summary>

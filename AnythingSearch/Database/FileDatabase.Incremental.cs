@@ -89,15 +89,46 @@ public partial class FileDatabase
         cmd.Parameters.AddWithValue("@folder", folderPath);
         await cmd.ExecuteNonQueryAsync();
 
-        // Also delete children if it was a folder.
+        // Children only exist if the deleted path was itself an indexed FOLDER, and the
+        // overwhelming majority of deletions are files. Establishing that first, with an equality
+        // lookup that seeks idx_folders_path, is what keeps the subtree sweep below off the hot
+        // path: the file watcher calls this once per deleted entry, and a busy machine deletes
+        // thousands of files a minute.
+        long folderId;
+        using (var lookup = new SqliteCommand(
+                   "SELECT Id FROM Folders WHERE Path = @path COLLATE NOCASE", _connection))
+        {
+            lookup.Parameters.AddWithValue("@path", path);
+            var found = await lookup.ExecuteScalarAsync();
+            if (found == null || found == DBNull.Value) return;
+            folderId = Convert.ToInt64(found);
+        }
+
+        // FolderId = @id covers the files sitting directly inside the deleted folder. The prefix
+        // below cannot match them - their folder path IS the deleted path, with no trailing
+        // separator - so they used to survive the delete as unreachable rows that searches still
+        // returned.
+        //
         // The prefix MUST be escaped: '_' is a single-character wildcard in LIKE and real paths
         // are full of underscores (C:\Program Files\..., G:\src\MS_Store_App\...), so an
-        // unescaped prefix also deleted rows belonging to unrelated sibling folders.
+        // unescaped prefix also deleted rows belonging to unrelated sibling folders. But an
+        // ESCAPE clause disables SQLite's LIKE-to-range optimisation outright, which made this a
+        // full scan of every folder ever indexed - hundreds of thousands of rows - per deleted
+        // entry, while holding the connection gate the search box queues on. The explicit range
+        // restores the index seek; LIKE stays on as the exact filter over what it returns.
         var childSql = @"
             DELETE FROM Files
-            WHERE FolderId IN (SELECT Id FROM Folders WHERE Path LIKE @pathPrefix ESCAPE '\' COLLATE NOCASE)
+            WHERE FolderId = @id
+               OR FolderId IN (
+                    SELECT Id FROM Folders
+                    WHERE Path >= @from AND Path < @to
+                      AND Path LIKE @pathPrefix ESCAPE '\')
         ";
         using var childCmd = new SqliteCommand(childSql, _connection);
+        childCmd.Parameters.AddWithValue("@id", folderId);
+        childCmd.Parameters.AddWithValue("@from", path + "\\");
+        // ']' is the next character after '\', so this is the exclusive end of the "path\..." range.
+        childCmd.Parameters.AddWithValue("@to", path + "]");
         childCmd.Parameters.AddWithValue("@pathPrefix", EscapeLike(path) + "\\%");
         await childCmd.ExecuteNonQueryAsync();
     }

@@ -148,8 +148,13 @@ public partial class SearchManager : IDisposable
             if (_indexingService.IsIndexing) return;
 
             var removed = await _database.EnsureUniqueEntriesAsync();
+
+            // Folder rows the watcher's deletions left behind. Every search scans the folder blob
+            // built from this table, so they slow searching down until they are cleared out.
+            removed += await _database.PruneOrphanFoldersAsync();
+
             if (removed > 0)
-                _memorySearch.RequestRebuild($"{removed:N0} duplicate entries removed");
+                _memorySearch.RequestRebuild($"{removed:N0} stale entries removed");
 
             await _database.CompactIfFragmentedAsync();
         }

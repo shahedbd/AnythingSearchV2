@@ -4,8 +4,9 @@ using AnythingSearch.Models;
 namespace AnythingSearch.Services;
 
 /// <summary>
-/// Per-change-type database sync logic for FileWatcherService, plus the ignore-list filters
-/// shared by the scanner in FileWatcherService.ChangeQueue.cs.
+/// Per-change-type database sync logic for FileWatcherService. The ignore filters these call
+/// live in FileWatcherService.Filters.cs; the walk a genuinely new directory triggers lives in
+/// FileWatcherService.DirectoryWalk.cs.
 ///
 /// Every handler resolves the path against the real file system before writing. OS events are
 /// only a hint that "something happened here" - they arrive out of order, are coalesced by
@@ -26,22 +27,35 @@ public partial class FileWatcherService
             // rebuild and the watcher end up with the same contents.
             if (IndexPlanner.IsSkippable(dir)) return;
 
-            if (!await _database.ExistsAsync(path))
-            {
-                var entry = new FileEntry
-                {
-                    Name = dir.Name,
-                    Path = dir.FullName,
-                    Extension = "",
-                    Size = 0,
-                    Modified = dir.LastWriteTime,
-                    IsFolder = true
-                };
-                await _database.InsertSingleAsync(entry);
-                _memoryIndex?.NotifyAdded(entry);
-            }
+            // Already indexed - and that is the overwhelmingly common case here, because a
+            // directory raises a Changed event of its own every time a file is added to or
+            // removed from it, and HandleModifiedAsync routes those back into this method.
+            //
+            // Returning early is the single most important thing this class does for search
+            // latency. Without it, saving one file in a large folder walked that folder's ENTIRE
+            // subtree again - a database round trip per file, each one taking the connection gate
+            // the search box also has to queue behind. A busy disk kept that walk running
+            // permanently, which is how a five-character query ended up waiting 87 seconds.
+            //
+            // Nothing is lost by skipping it: the entries inside an already-indexed directory
+            // raise their own events, and anything that happened while the app was closed belongs
+            // to the startup catch-up pass, not to a change notification.
+            if (await _database.ExistsAsync(path)) return;
 
-            // Also index files inside the new directory
+            var folderEntry = new FileEntry
+            {
+                Name = dir.Name,
+                Path = dir.FullName,
+                Extension = "",
+                Size = 0,
+                Modified = dir.LastWriteTime,
+                IsFolder = true
+            };
+            await _database.InsertSingleAsync(folderEntry);
+            _memoryIndex?.NotifyAdded(folderEntry);
+
+            // Genuinely new to the index, so its contents may never raise events of their own -
+            // a folder moved in from another drive, or restored from a backup, arrives whole.
             await IndexNewDirectoryAsync(dir);
         }
         else if (File.Exists(path))
@@ -151,50 +165,5 @@ public partial class FileWatcherService
             // File was created but we missed the create event - add it
             await HandleCreatedAsync(path);
         }
-    }
-
-    private bool ShouldIgnore(string path)
-    {
-        if (string.IsNullOrEmpty(path)) return true;
-
-        // Ignore excluded folders
-        foreach (var excluded in SettingsService.Current.ExcludedFolders)
-        {
-            if (path.Contains($"\\{excluded}\\", StringComparison.OrdinalIgnoreCase) ||
-                path.EndsWith($"\\{excluded}", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        // Ignore temporary/system files.
-        // NOTE: names starting with "." are NOT ignored - that used to hide real content such as
-        // .github, .vscode, .env from the watcher even though the initial scan indexes them.
-        var fileName = Path.GetFileName(path);
-        if (string.IsNullOrEmpty(fileName)) return true;
-
-        if (fileName.StartsWith("~$") ||
-            fileName.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) ||
-            fileName.EndsWith(".temp", StringComparison.OrdinalIgnoreCase) ||
-            fileName.Equals("Thumbs.db", StringComparison.OrdinalIgnoreCase) ||
-            fileName.Equals("desktop.ini", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        // Ignore database files
-        if (fileName.StartsWith("AnythingSearch.db", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        return false;
-    }
-
-    private bool IsExcludedExtension(string extension)
-    {
-        if (string.IsNullOrEmpty(extension)) return false;
-        var ext = extension.TrimStart('.').ToLowerInvariant();
-        return SettingsService.Current.ExcludedExtensions.Contains(ext);
     }
 }
