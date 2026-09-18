@@ -4,6 +4,8 @@ namespace AnythingSearch.Forms;
 
 internal static class Program
 {
+    private static readonly string MutexName = $@"Local\{AppConfig.AppDataFolderName}.Instance";
+    private static Mutex _singleInstanceMutex;
     /// <summary>
     /// The main entry point for the application.
     /// </summary>
@@ -16,20 +18,24 @@ internal static class Program
         // the raw .NET crash dialog and an empty log.
         CrashHandler.Install();
 
-        if (CommonHelper.PriorProcess() != null)
+        // Before the instance check, not after: the "already running"
+        // dialog is UI too, and without these it renders with unthemed
+        // classic controls.
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+
+        _singleInstanceMutex = new Mutex(initiallyOwned: true, MutexName, out bool isFirstInstance);
+
+        if (!isFirstInstance)
         {
-            MessageBox.Show("Another instance of the app is already running.");
+            MessageBox.Show($"{AppConfig.AppName} is already running.", AppConfig.AppName);
+            _singleInstanceMutex.Dispose();
             return;
         }
+
         // Enable high DPI support for Windows 10/11
         // This is CRITICAL for Microsoft Store approval at 150% scaling
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
-
-        // Enable visual styles for modern appearance
-        Application.EnableVisualStyles();
-
-        // Use compatible text rendering for better font scaling
-        Application.SetCompatibleTextRenderingDefault(false);
 
         // Set default font for the entire application (DPI-aware)
         Application.SetDefaultFont(new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point));

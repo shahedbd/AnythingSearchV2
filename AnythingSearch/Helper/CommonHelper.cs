@@ -4,45 +4,56 @@ namespace AnythingSearch.Helper
 {
     public static class CommonHelper
     {
-        public static Icon LoadApplicationIcon()
+        public static async Task<bool> StartProcessAsync(string _FileName, int delayMs = 0)
         {
+            // Validation
+            if (string.IsNullOrWhiteSpace(_FileName))
+            {
+                Logger.Log("StartProcess: Empty filename provided");
+                return false;
+            }
+
             try
             {
-                // Method 1: Try to load from file system
-                var iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "favicon.ico");
-                if (File.Exists(iconPath))
+                // Optional delay to prevent multiple tabs opening simultaneously
+                if (delayMs > 0)
                 {
-                    return new Icon(iconPath);
+                    await Task.Delay(delayMs);
                 }
 
-                // Method 2: Try to load from embedded resources
-                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
-                var resourceName = "AnythingSearch.Resources.favicon.ico";
-                using var stream = assembly.GetManifestResourceStream(resourceName);
-                if (stream != null)
+                var _ProcessStartInfo = new ProcessStartInfo
                 {
-                    return new Icon(stream);
+                    FileName = _FileName,
+                    UseShellExecute = true,
+                    ErrorDialog = false // Don't show error dialogs to user
+                };
+
+                Logger.Log($"Starting process: {_FileName}");
+
+                // Process.Start is already non-blocking for external processes
+                var process = Process.Start(_ProcessStartInfo);
+
+                if (process == null)
+                {
+                    Logger.Log($"Failed to start process: {_FileName}");
+                    return false;
                 }
 
-                // Method 3: Try alternative resource names
-                var resourceNames = assembly.GetManifestResourceNames();
-                var iconResource = resourceNames.FirstOrDefault(r => r.EndsWith("favicon.ico"));
-                if (iconResource != null)
-                {
-                    using var altStream = assembly.GetManifestResourceStream(iconResource);
-                    if (altStream != null)
-                    {
-                        return new Icon(altStream);
-                    }
-                }
+                Logger.Log($"Successfully started process: {_FileName}");
+                return true;
+            }
+            catch (System.ComponentModel.Win32Exception ex)
+            {
+                // Common errors: No default browser, file not found, access denied
+                Logger.Log($"Win32Exception starting process '{_FileName}': {ex.Message}");
+                return false;
             }
             catch (Exception ex)
             {
-                Logger.Log($"Failed to load the application icon: {ex.Message}");
+                // Catch any other exceptions
+                Logger.Log($"Exception starting process '{_FileName}': {ex.Message}");
+                return false;
             }
-
-            // Fallback to system icon
-            return SystemIcons.Application;
         }
         [System.Runtime.InteropServices.DllImport("wininet.dll")]
         private extern static bool InternetGetConnectedState(out int Description, int ReservedValue);
@@ -50,28 +61,6 @@ namespace AnythingSearch.Helper
         {
             int desc;
             return InternetGetConnectedState(out desc, 0);
-        }
-        public static async Task StartProcessAsync(string _FileName)
-        {
-            var _ProcessStartInfo = new ProcessStartInfo
-            {
-                FileName = _FileName,
-                UseShellExecute = true
-            };
-
-            await Task.Run(() => Process.Start(_ProcessStartInfo));
-        }
-        public static Process PriorProcess()
-        {
-            Process curr = Process.GetCurrentProcess();
-            Process[] procs = Process.GetProcessesByName(curr.ProcessName);
-            foreach (Process p in procs)
-            {
-                if ((p.Id != curr.Id) &&
-                    (p.MainModule.FileName == curr.MainModule.FileName))
-                    return p;
-            }
-            return null;
         }
     }
 }

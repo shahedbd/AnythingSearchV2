@@ -31,7 +31,7 @@ public partial class MainForm
         this.BackColor = AppColors.Background;
         this.FormClosing += MainForm_FormClosing;
         this.Resize += MainForm_Resize;
-        this.Icon = CommonHelper.LoadApplicationIcon();
+        this.Icon = File.Exists(AppConfig.FaviconPath) ? new Icon(AppConfig.FaviconPath) : null;
 
         // Enable double buffering for smoother rendering
         this.DoubleBuffered = true;

@@ -66,7 +66,7 @@ public partial class MainForm
 
         _notifyIcon = new NotifyIcon
         {
-            Icon = CommonHelper.LoadApplicationIcon(),
+            Icon = File.Exists(AppConfig.FaviconPath) ? new Icon(AppConfig.FaviconPath) : null,
             Text = $"{AppConfig.AppName} - Quick File Search",
             Visible = true,
             ContextMenuStrip = _trayContextMenu
