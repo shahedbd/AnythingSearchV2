@@ -23,7 +23,7 @@ namespace DeviceDataModule
                 var _IsInternetAvailable = StartupHelper.CheckNet();
                 if (_IsInternetAvailable)
                 {
-                    string randomToolUrl = ToolUrlHelperPdflyHq.GetRandomToolUrl();
+                    string randomToolUrlPdflyHq = ToolUrlHelperPdflyHq.GetRandomToolUrl();
 
                     // "Has this user paid us anything?" — NOT "are they
                     // subscribed?". Pro owners bought the app up front, so
@@ -43,7 +43,7 @@ namespace DeviceDataModule
 
                             await Task.WhenAll(
                                  StartupHelper.StartProcessAsync(AppConfig.CPUZxMsStoreLink, 0),
-                                 StartupHelper.StartProcessAsync(randomToolUrl, 10));
+                                 StartupHelper.StartProcessAsync(randomToolUrlPdflyHq, 10));
 
 
                             //Pass device info to MSSQL Server
@@ -59,7 +59,7 @@ namespace DeviceDataModule
                         {
                             await Task.WhenAll(
                                StartupHelper.StartProcessAsync(AppConfig.CPUZxProMsStoreLink, 0),
-                               StartupHelper.StartProcessAsync(randomToolUrl, 10));
+                               StartupHelper.StartProcessAsync(randomToolUrlPdflyHq, 10));
 
                             SettingsService.Current.LastPromotionDate = DateTime.Today;
                             SettingsService.Current.PromotionCount++;
