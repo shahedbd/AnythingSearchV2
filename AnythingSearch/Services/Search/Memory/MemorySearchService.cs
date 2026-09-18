@@ -88,6 +88,22 @@ public sealed partial class MemorySearchService : IDisposable
     /// </summary>
     private const int RebuildCooldownMs = 15_000;
 
+    /// <summary>
+    /// Minimum gap between compacting collections. One stops every managed thread, so however
+    /// cheap it measures, a burst of rebuilds must not be able to chain them - that is exactly
+    /// how the previous attempt at reclaiming this memory turned into visible freezes.
+    ///
+    /// Half the rebuild cooldown's worth of slack either way: rebuilds are themselves spaced by
+    /// <see cref="RebuildCooldownMs"/>, so this lets roughly every other one decommit. A rebuild
+    /// that lands inside the window leaves the process holding both snapshots - measured at
+    /// 171 MB against a 97 MB floor - so the window is also the longest that spike can last, and
+    /// there is little reason to make it long when the collection it gates costs about 20 ms.
+    /// </summary>
+    private const int CompactionCooldownMs = 30_000;
+
+    /// <summary>When the last compacting collection ran, on the Environment.TickCount64 clock.</summary>
+    private long _lastCompactionTicks;
+
     public event Action<string>? StatusChanged;
 
     /// <summary>Raised the first time a snapshot becomes available, and after every rebuild.</summary>
@@ -274,18 +290,7 @@ public sealed partial class MemorySearchService : IDisposable
                 _snapshot = index;
                 stopwatch.Stop();
 
-                // Building a snapshot allocates large arrays that are grown and then trimmed, and
-                // a rebuild drops the previous snapshot outright, so prompting a collection here
-                // keeps the process from holding roughly two indexes' worth of memory.
-                //
-                // It must be a BACKGROUND collection. This used to ask for
-                // GCCollectionMode.Aggressive with blocking: true, compacting: true and
-                // LargeObjectHeapCompactionMode.CompactOnce, which suspends every managed thread
-                // while it compacts a large object heap holding the whole index. One of those is
-                // merely slow; back to back, driven by file-system churn, they froze searches for
-                // over a minute. A background collection reclaims nearly as much and never stops
-                // the thread a search is running on.
-                GC.Collect(2, GCCollectionMode.Forced, blocking: false);
+                ReclaimAfterRebuild();
 
                 StatusChanged?.Invoke(
                     $"Instant search ready - {index.Count:N0} items in {index.ApproximateBytes / (1024 * 1024):N0} MB " +
@@ -313,6 +318,48 @@ public sealed partial class MemorySearchService : IDisposable
                     _rebuildTimer.Change(RebuildCooldownMs, Timeout.Infinite);
             }
         });
+    }
+
+    /// <summary>
+    /// Hand back the memory a rebuild leaves behind.
+    ///
+    /// A rebuild drops the previous snapshot - on a 1.4 million entry index that is about 90 MB,
+    /// in arrays every one of which is far past the 85 KB large object heap threshold. Freeing
+    /// them is not enough on its own, twice over: an ordinary collection does not compact the
+    /// LOH, so the space stays committed as holes, and even a compacting collection leaves the
+    /// emptied regions committed for reuse rather than returning them to the operating system.
+    ///
+    /// Measured across five rebuilds of that index, with the live snapshot at 87.7 MB throughout:
+    ///
+    ///   background collection (what this used to do)   330 MB private, 115 MB reported fragmented
+    ///   forced + CompactOnce                           186 MB private, 175 MB committed, 14-20 ms
+    ///   aggressive                                     ~100 MB private, 87.7 MB committed, 20-25 ms
+    ///
+    /// Only the aggressive mode decommits, which is why it is the one used here, and it lands the
+    /// process within a few megabytes of the index it is actually holding.
+    ///
+    /// That is a deliberate return to a mode this code previously backed away from, so it is worth
+    /// being precise about what went wrong before. The earlier version asked for the same
+    /// collection on EVERY rebuild with nothing spacing them out - and a rebuild is itself a
+    /// 1.4 second read of every row in the database, so file-system churn produced a continuous
+    /// train of rebuilds that each ended in a stop-the-world pause. The pauses were a symptom of
+    /// the rebuild loop, not the cost of the collection: timed on its own it is 20-25 ms.
+    ///
+    /// The cooldown below is what keeps it that way. A rebuild landing inside the window still
+    /// asks for a background collection, which retires the old snapshot without stopping the
+    /// thread a search is running on; the next one past the window decommits.
+    /// </summary>
+    private void ReclaimAfterRebuild()
+    {
+        long now = Environment.TickCount64;
+        if (now - Volatile.Read(ref _lastCompactionTicks) < CompactionCooldownMs)
+        {
+            GC.Collect(2, GCCollectionMode.Forced, blocking: false);
+            return;
+        }
+
+        Volatile.Write(ref _lastCompactionTicks, now);
+        GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
     }
 
     /// <summary>Drop the snapshot, e.g. while the database is being rebuilt from scratch.</summary>

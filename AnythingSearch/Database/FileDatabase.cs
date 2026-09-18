@@ -174,6 +174,13 @@ public partial class FileDatabase : IDisposable
         await ExecuteNonQueryAsync("PRAGMA locking_mode = NORMAL");
         // Wait briefly instead of failing outright when the in-memory index is reading the file.
         await ExecuteNonQueryAsync("PRAGMA busy_timeout = 5000");
+
+        // Lowering cache_size caps how large the page cache may GROW; it does not hand back pages
+        // SQLite has already allocated. That matters on the path into here from
+        // ApplyBulkBuildSettingsAsync, which runs the whole index build with a 64 MB cache: without
+        // this the process keeps holding that cache for the rest of the session, long after the
+        // build that justified it finished and searches moved to the in-memory index.
+        await ExecuteNonQueryAsync("PRAGMA shrink_memory");
     }
 
     /// <summary>

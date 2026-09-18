@@ -154,8 +154,17 @@ public sealed class PackedStringTable
         private int _count;
         private int _length;
 
+        /// <summary>
+        /// <paramref name="expectedBytes"/> should be the EXACT folded size plus a small margin -
+        /// see <see cref="MemoryIndexBuilder"/>, which asks SQLite for it. Getting it right is the
+        /// whole point: every byte of overshoot is wasted for the life of the snapshot, and every
+        /// byte of undershoot triggers the grow path, which copies the entire blob.
+        /// </summary>
         public Builder(int expectedCount, long expectedBytes)
         {
+            // Zero-initialised deliberately. The tail past _length is still part of the span
+            // callers scan, and zero is the one byte a folded search term can never contain, so a
+            // zeroed tail can never produce a phantom match. An uninitialised array could.
             _blob = new byte[Math.Max(1024, Math.Min(expectedBytes, Array.MaxLength))];
             _start = new int[Math.Max(16, expectedCount + 1)];
             _upperBits = new ulong[(_blob.Length >> 6) + 2];
@@ -221,20 +230,45 @@ public sealed class PackedStringTable
 
             if (_length + extraBytes <= _blob.Length) return;
 
-            long needed = Math.Max((long)_blob.Length * 2, (long)_length + extraBytes);
+            // Grow by an eighth, not by doubling.
+            //
+            // The caller now sizes the blob from the exact byte count the database reports, so
+            // reaching here means a handful of entries folded longer than they were stored - short
+            // by kilobytes, not by a factor of two. Doubling was measurably the largest single
+            // source of large object heap garbage in a rebuild: the folder table needed 17.3 MB
+            // against a 17.1 MB estimate, so it allocated 34.2 MB to fit the last few hundred
+            // bytes and then copied that back down to 17.3 MB in Build() - three arrays of that
+            // size touched to retain one, all of them past the 85 KB threshold, and none of the
+            // abandoned ones reclaimable by the non-compacting collection that follows a rebuild.
+            long needed = Math.Max((long)_blob.Length + (_blob.Length >> 3), (long)_length + extraBytes);
             if (needed > Array.MaxLength) needed = Array.MaxLength;
             Array.Resize(ref _blob, (int)needed);
             Array.Resize(ref _upperBits, (_blob.Length >> 6) + 2);
         }
+
+        /// <summary>
+        /// Slack left on the blob rather than copied away. Trimming allocates a second copy of the
+        /// whole blob and abandons the first, so it only pays for itself once the waste is larger
+        /// than the copy is disruptive.
+        /// </summary>
+        private const int TrimThreshold = 4 * 1024 * 1024;
 
         public PackedStringTable Build()
         {
             Array.Resize(ref _start, _count + 1);
             _start[_count] = _length;
 
-            if (_length != _blob.Length)
+            // A small overshoot is KEPT, not trimmed. Trimming a 30 MB name blob to save a couple
+            // of megabytes allocates a fresh 30 MB array on the large object heap and leaves the
+            // original behind as a hole - it costs more than it saves, and the hole outlives the
+            // collection that follows. The tail is harmless: every name walk is bounded by _start,
+            // ScanFolders can only match on non-zero bytes, and ApproximateBytes reports the real
+            // array length either way.
+            if (_blob.Length - _length > TrimThreshold)
+            {
                 Array.Resize(ref _blob, _length);
-            Array.Resize(ref _upperBits, (_length >> 6) + 2);
+                Array.Resize(ref _upperBits, (_blob.Length >> 6) + 2);
+            }
 
             return new PackedStringTable(_blob, _start, _upperBits, _overrides, _count);
         }

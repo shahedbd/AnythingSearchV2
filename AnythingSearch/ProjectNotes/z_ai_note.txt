@@ -9,6 +9,16 @@ C:\Users\Public\src\MS_Store_App\AnythingSearch\Doc\Requirements
 - Preserve existing behavior unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
+I publish the app and installed app uisng:
+G:\src\MS_Store_App\AnythingSearchV2\WinAppPakaging\AppPackages\WinAppPakaging_2.0.0.0_Test\Install.ps1
+
+Run the app for testing. App is working as expected. But is consume high memory as a samll tool. It consume 200 to 350 MB memory.
+can we optmised app memory usages?
+
+
+
+
+
 Now create project code documentataions on:
 1. idenxing
 2. rebuild indexing

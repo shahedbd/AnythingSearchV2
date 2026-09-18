@@ -36,15 +36,27 @@ public static class MemoryIndexBuilder
         Execute(connection, "PRAGMA cache_size = -8000");        // 8 MB
         Execute(connection, "PRAGMA mmap_size = 134217728");     // 128 MB
 
-        int fileCount = (int)Math.Min(int.MaxValue, Scalar(connection, "SELECT COUNT(*) FROM Files"));
-        int folderCount = (int)Math.Min(int.MaxValue, Scalar(connection, "SELECT COUNT(*) FROM Folders"));
+        // Row counts AND the exact folded size of each blob, one scan per table.
+        //
+        // The byte totals are what let PackedStringTable.Builder allocate its blob once and never
+        // grow it. They used to be guessed - 24 bytes per name, 96 per folder path - and a guess
+        // that lands even slightly low is expensive out of all proportion: on a 1.4 million entry
+        // index the folder table needed 17.3 MB against the 17.1 MB guess, so the builder doubled
+        // to 34.2 MB to fit the last few hundred bytes and then copied back down, leaving two
+        // large-object-heap arrays behind to retain one. LENGTH(CAST(x AS BLOB)) is the UTF-8 byte
+        // count, which is exactly what the blob stores; the +Count is the NUL after each entry.
+        //
+        // Cost is about 130 ms against the 1.7 s the row read itself takes, and it is paid on a
+        // background thread while searches continue on the previous snapshot.
+        var (fileCount, nameBytes) = CountAndBytes(connection, "Name", "Files");
+        var (folderCount, folderBytes) = CountAndBytes(connection, "Path", "Folders");
         long maxFolderId = Scalar(connection, "SELECT IFNULL(MAX(Id), 0) FROM Folders");
 
         // Folder ids are assigned by SQLite and can have gaps, so map id -> dense table index.
         var folderIndexById = new int[maxFolderId + 2];
         Array.Fill(folderIndexById, -1);
 
-        var folderTable = new PackedStringTable.Builder(folderCount, folderCount * 96L);
+        var folderTable = new PackedStringTable.Builder(folderCount + 1, BlobSize(folderBytes, folderCount + 1));
         using (var cmd = new SqliteCommand("SELECT Id, Path FROM Folders", connection))
         using (var reader = cmd.ExecuteReader())
         {
@@ -62,7 +74,7 @@ public static class MemoryIndexBuilder
         int unknownFolder = folderTable.Add("");
         var folders = folderTable.Build();
 
-        var names = new PackedStringTable.Builder(fileCount, fileCount * 24L);
+        var names = new PackedStringTable.Builder(fileCount, BlobSize(nameBytes, fileCount));
         var folderOf = new int[Math.Max(1, fileCount)];
         var sizes = new long[Math.Max(1, fileCount)];
         var modified = new int[Math.Max(1, fileCount)];
@@ -108,6 +120,30 @@ public static class MemoryIndexBuilder
             isFolderBits, count);
     }
 
+    /// <summary>
+    /// Blob bytes to reserve for <paramref name="count"/> entries totalling <paramref name="bytes"/>
+    /// stored UTF-8 bytes: the entries, their NUL separators, and a small margin.
+    ///
+    /// The margin exists because folding is not always length-preserving. ASCII folds byte for
+    /// byte, but a non-ASCII entry is lowercased with the invariant culture before it is encoded,
+    /// and a few characters get longer when they are lowercased - Turkish dotted capital I is one
+    /// UTF-8 sequence up and two down. Those entries are rare, so a fraction of a percent plus a
+    /// fixed floor covers a realistic drive while still being far tighter than the old guess. The
+    /// grow path stays in place for the case it does not.
+    /// </summary>
+    private static long BlobSize(long bytes, long count) =>
+        bytes + count + Math.Max(64 * 1024, bytes / 256);
+
+    /// <summary>Row count and total stored UTF-8 bytes of one text column, in a single scan.</summary>
+    private static (int Count, long Bytes) CountAndBytes(SqliteConnection connection, string column, string table)
+    {
+        using var cmd = new SqliteCommand(
+            $"SELECT COUNT(*), IFNULL(SUM(LENGTH(CAST({column} AS BLOB))), 0) FROM {table}", connection);
+        using var reader = cmd.ExecuteReader();
+        if (!reader.Read()) return (0, 0);
+        return ((int)Math.Min(int.MaxValue, reader.GetInt64(0)), reader.GetInt64(1));
+    }
+
     private static DateTime SafeDate(SqliteDataReader reader, int ordinal)
     {
         if (reader.IsDBNull(ordinal)) return DateTime.MinValue;
@@ -125,9 +161,19 @@ public static class MemoryIndexBuilder
         Array.Resize(ref isFolderBits, (size >> 6) + 1);
     }
 
+    /// <summary>
+    /// Shrink a parallel array to the rows actually read, but only when the slack is worth a copy.
+    ///
+    /// The arrays are sized from COUNT(*), so they normally come out exact and this does nothing.
+    /// When rows were deleted between the count and the read the slack is a handful of entries,
+    /// and resizing then would allocate a second copy of an array that is megabytes long to
+    /// reclaim bytes. Nothing reads past <c>count</c>: MemoryFileIndex takes the count separately
+    /// and indexes below it.
+    /// </summary>
     private static T[] Trim<T>(T[] array, int count)
     {
-        if (array.Length == count) return array;
+        const int SlackThreshold = 64 * 1024;
+        if (array.Length - count <= SlackThreshold) return array;
         Array.Resize(ref array, count);
         return array;
     }

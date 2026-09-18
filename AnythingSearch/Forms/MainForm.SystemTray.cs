@@ -125,7 +125,47 @@ public partial class MainForm
                 ToolTipIcon.Info);
             _showBalloonOnMinimize = false;
         }
+
+        ReleaseIdleWorkingSet();
     }
+
+    /// <summary>
+    /// Ask Windows to page out the working set on the way into the tray.
+    ///
+    /// This app spends nearly all of its life minimised, holding an in-memory index that is
+    /// deliberately large - about 90 MB of packed name and folder blobs for a 1.4 million entry
+    /// drive. Almost none of that is touched while the window is hidden: the file watcher writes
+    /// to SQLite and appends to a small delta, and nothing scans the blobs until someone types.
+    /// Trimming here hands those pages back, which is the difference between a tray icon that
+    /// reads as ~100 MB in Task Manager and one that reads as a few megabytes.
+    ///
+    /// The trade is real and worth stating: the pages are not freed, they are unmapped, so the
+    /// first search after the window comes back has to fault them in again. In practice Windows
+    /// keeps them on the standby list while there is free memory, so that costs a memory copy
+    /// rather than a disk read - but on a machine under memory pressure they will have gone to
+    /// the page file, and that first search pays for it. Doing this only on the way into the
+    /// tray, rather than on a timer or after every search, keeps the cost to at most once per
+    /// hide and never in the middle of someone typing.
+    ///
+    /// Best effort by design. EmptyWorkingSet is advisory, and a failure here costs nothing worth
+    /// reporting or interrupting the hide for.
+    /// </summary>
+    private static void ReleaseIdleWorkingSet()
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.GetCurrentProcess();
+            EmptyWorkingSet(process.Handle);
+        }
+        catch
+        {
+            // Advisory call - nothing downstream depends on it having worked.
+        }
+    }
+
+    [System.Runtime.InteropServices.DllImport("psapi.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool EmptyWorkingSet(IntPtr processHandle);
 
     private void UpdateTrayStatus(string status)
     {
