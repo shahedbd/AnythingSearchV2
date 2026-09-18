@@ -9,6 +9,19 @@ C:\Users\Public\src\MS_Store_App\AnythingSearch\Doc\Requirements
 - Preserve existing behavior unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
+Now how we can improve indexing time dynamicaly set value of: MaxIndexingThreads 
+/Models/AppSettings.cs
+public int MaxIndexingThreads { get; set; } = 2;
+
+based on user available resources?
+
+As app has 100k different types of user with different harware.
+
+
+
+
+
+
 -delete app data folder
 -run app as fresh mode
 -app index 1.3 millions

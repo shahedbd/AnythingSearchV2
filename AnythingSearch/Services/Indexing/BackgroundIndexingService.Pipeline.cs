@@ -167,7 +167,10 @@ public partial class BackgroundIndexingService
         var alreadyDone = new HashSet<string>(scopeState.CompletedUnits, StringComparer.OrdinalIgnoreCase);
         var units = _planner.ExpandUnits(scope).Where(u => !alreadyDone.Contains(u.Key)).ToList();
         var skipDirectories = SkipDirectoriesFor(scope);
-        var chunkSize = Math.Max(1, SettingsService.Current.MaxIndexingThreads);
+        // Chosen from the drive this scope walks, not from one number for the whole machine: a
+        // scope is a drive, and an NVMe system disk and a USB backup disk want very different
+        // answers. See IndexingCapacity.
+        var chunkSize = IndexingCapacity.WalkersFor(scope.Drive);
 
         var segmentThreshold = SegmentThreshold;
 

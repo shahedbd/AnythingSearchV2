@@ -28,8 +28,10 @@ public partial class BackgroundIndexingService
         if (IndexPlanner.IsSkippable(root.Directory)) return;
 
         var writer = _channel!.Writer;
-        var throttleBatch = Math.Max(0, SettingsService.Current.IndexThrottleBatchSize);
-        var throttleDelay = Math.Max(0, SettingsService.Current.IndexThrottleDelayMs);
+
+        // Paced for the drive being walked. The pause is there to keep the machine usable, so a
+        // device the user would not notice being walked does not need as much of it.
+        var (throttleBatch, throttleDelay) = IndexingCapacity.ThrottleFor(root.Directory.FullName);
 
         var directoryStack = new Stack<DirectoryInfo>(64);
         directoryStack.Push(root.Directory);
