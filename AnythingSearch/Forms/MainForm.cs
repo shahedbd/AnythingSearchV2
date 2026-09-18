@@ -338,7 +338,13 @@ public partial class MainForm : Form
 
             contextMenu?.Dispose();
 
-            foreach (var icon in _iconCache.Values) icon?.Dispose();
+            // _fileIcon is cached under every extension the shell had nothing for, so it would
+            // otherwise be disposed here once per such extension and then again below.
+            foreach (var icon in _iconCache.Values)
+            {
+                if (!ReferenceEquals(icon, _fileIcon) && !ReferenceEquals(icon, _folderIcon))
+                    icon?.Dispose();
+            }
             _iconCache.Clear();
             _folderIcon?.Dispose();
             _fileIcon?.Dispose();

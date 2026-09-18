@@ -29,7 +29,7 @@ internal static class Program
 
         if (!isFirstInstance)
         {
-            MessageBox.Show($"{AppConfig.AppName} is already running.", AppConfig.AppName);
+            MessageBox.Show($"{AppConfig.AppName} is already running.", AppConfig.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
             _singleInstanceMutex.Dispose();
             return;
         }

@@ -440,6 +440,11 @@ public partial class MainForm
         dgvResults.CellFormatting += DgvResults_CellFormatting;
         dgvResults.KeyDown += DgvResults_KeyDown;
 
+        // Only the visible rows get their file-type icon resolved, so scrolling has to ask for
+        // the next screenful. It returns immediately once those extensions are cached, which
+        // after a page or two of scrolling is nearly always.
+        dgvResults.Scroll += (_, _) => RefreshVisibleIcons();
+
         this.Controls.Add(dgvResults);
     }
     // <summary>

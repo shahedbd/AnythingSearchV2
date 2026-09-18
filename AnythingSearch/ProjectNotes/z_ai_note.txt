@@ -9,6 +9,16 @@ C:\Users\Public\src\MS_Store_App\AnythingSearch\Doc\Requirements
 - Preserve existing behavior unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
+-delete app data folder
+-run app as fresh mode
+-app index 1.3 millions
+-search: sha--get result instantly
+-now add 3 charecter more in current search input: sha + hed
+i have to wait around: 7998 ms
+
+
+
+
 Before production release now, review full code and give me report as:
 -high
 -medium 

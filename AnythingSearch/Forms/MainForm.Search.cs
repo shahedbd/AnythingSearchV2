@@ -125,9 +125,6 @@ public partial class MainForm
             ? results.Take(MaxDisplayedResults).ToList()
             : results;
 
-        // Resolve file-type icons off the UI thread - Icon.ExtractAssociatedIcon hits the disk
-        await PrewarmIconCacheAsync(displayResults, cancellationToken);
-
         if (cancellationToken.IsCancellationRequested || IsDisposed || Disposing) return;
 
         pnlRecentSearches.Visible = false;
@@ -135,6 +132,12 @@ public partial class MainForm
         dgvResults.Visible = true;
 
         sw.Stop();
+
+        // File-type icons are resolved AFTER the rows are on screen, and only for the rows that
+        // are actually visible. Waiting for them here is what made a search that returned files
+        // take seconds while one that returned only folders was instant - see RefreshVisibleIcons
+        // in MainForm.Events.cs. Nothing below is on the path to showing results.
+        RefreshVisibleIcons();
 
         SaveToRecentSearches(searchText, Math.Max(totalMatches, results.Count));
 
@@ -158,6 +161,10 @@ public partial class MainForm
     /// <summary>
     /// Fill the grid with a single AddRange - adding rows one by one re-runs the
     /// Fill column layout for every row, which is what made large result sets stutter.
+    ///
+    /// Each row keeps its entry in Tag. The icons are filled in afterwards, and the backfill
+    /// needs the path and whether the row is a folder; reading those back out of the cells
+    /// would mean re-parsing display text to recover what we already had here.
     /// </summary>
     private void PopulateResultGrid(List<FileEntry> displayResults)
     {
@@ -174,6 +181,7 @@ public partial class MainForm
                 item.Path,
                 item.IsFolder ? "" : FormatSize(item.Size),
                 item.Modified.ToString("yyyy-MM-dd  HH:mm"));
+            row.Tag = item;
             rows[i] = row;
         }
 
