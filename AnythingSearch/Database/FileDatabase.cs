@@ -329,12 +329,23 @@ public partial class FileDatabase : IDisposable
         using var dbLock = await LockAsync();
 
         // The unique index and idx_folders_path already exist - PrepareForBulkIndexingAsync needs
-        // them during the build. These two are only read by searches, so they are built last,
-        // where building them is far cheaper than maintaining them row by row.
-        await ExecuteNonQueryAsync("CREATE INDEX IF NOT EXISTS idx_files_name ON Files(Name)");
-        await ExecuteNonQueryAsync("CREATE INDEX IF NOT EXISTS idx_files_ext ON Files(Ext)");
-
-        // Checkpoint WAL to merge into main database file
+        // them during the build, and both are used: (FolderId, Name) answers every Name lookup
+        // the watcher and the catch-up pass make, and idx_folders_path answers the path lookup
+        // behind each of them.
+        //
+        // Two more indexes used to be built here, on Files(Name) and Files(Ext). Both are gone,
+        // because EXPLAIN QUERY PLAN says neither can ever be chosen and between them they were
+        // 51.6 MiB of a 191 MiB index - 27% of the file:
+        //
+        //   Files(Name) cannot serve the search. The query is Name LIKE '%term%', and a leading
+        //   wildcard rules a B-tree out; the ESCAPE '\' clause disables SQLite's LIKE-to-range
+        //   optimisation on top of that. The plan for it is "SCAN Files". Every other query that
+        //   matches on Name also constrains FolderId, which (FolderId, Name) already covers.
+        //
+        //   Files(Ext) was never read at all - its own CREATE was the only mention of Ext in any
+        //   statement this class issues.
+        //
+        // See DropUnusedIndexesAsync for databases that already have them.
         await ExecuteNonQueryAsync("PRAGMA wal_checkpoint(TRUNCATE)");
 
         // Back to the modest settings the app runs with the rest of the time
@@ -346,6 +357,14 @@ public partial class FileDatabase : IDisposable
         // VACUUM to reclaim space and compact the database
         // This can reduce size by 20-30%
         await ExecuteNonQueryAsync("VACUUM");
+
+        // VACUUM in WAL mode rebuilds the database INTO the write-ahead log, so without this the
+        // main file never shrinks and the log is left holding a second copy of everything. After
+        // a 1.3 million entry build that was a 191 MiB database beside a 192 MiB log - the
+        // footprint was double what it should be, and the first in-memory snapshot then had to
+        // read both. CompactIfFragmentedAsync has always checkpointed after its VACUUM for
+        // exactly this reason; this path simply did not.
+        await ExecuteNonQueryAsync("PRAGMA wal_checkpoint(TRUNCATE)");
     }
 
     /// <summary>

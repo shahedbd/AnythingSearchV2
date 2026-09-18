@@ -9,6 +9,64 @@ C:\Users\Public\src\MS_Store_App\AnythingSearch\Doc\Requirements
 - Preserve existing behavior unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
+
+
+Now review AnythingSearch db size: 1 307 448 items
+C:\Users\User\AppData\Local\AnythingSearch_2000\AnythingSearch.db--->190 MB
+
+compare to Everything app: 3 261 445 object
+C:\Users\User\AppData\Local\Everything\Everything.db---->118 MB
+
+Everything app extra files/object due to our app avoid it:
+public List<string> ExcludedFolders { get; set; } = new()
+    {
+        // Development / Build
+        "obj",
+        "bin",
+        "node_modules",
+        ".git",
+        ".github",
+        ".vs",
+        ".idea",
+        ".vscode",
+        "packages",
+
+        // Package / Dependency Caches
+        "AppData\\Local\\NuGet",
+        "AppData\\Local\\npm-cache",
+        "AppData\\Roaming\\npm-cache",
+        "AppData\\Local\\Yarn",
+        "AppData\\Local\\pnpm-store",
+
+        // Windows / System
+        "$RECYCLE.BIN",
+        "System Volume Information",
+        "Windows\\WinSxS",
+
+        // Temporary / Cache / Crash Data
+        "AppData\\Local\\Temp",
+        "AppData\\Local\\CrashDumps",
+        "AppData\\Local\\D3DSCache",
+        "AppData\\Local\\Microsoft\\Windows\\INetCache",
+
+        // Browser Data
+        "AppData\\Local\\Microsoft\\Edge\\User Data",
+        "AppData\\Local\\Google\\Chrome\\User Data",
+        "AppData\\Local\\Packages"
+    };
+
+
+    Please verify it.
+
+
+
+
+
+
+
+
+
+
 Now how we can improve indexing time dynamicaly set value of: MaxIndexingThreads 
 /Models/AppSettings.cs
 public int MaxIndexingThreads { get; set; } = 2;
