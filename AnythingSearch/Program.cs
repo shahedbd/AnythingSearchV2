@@ -1,4 +1,5 @@
 using AnythingSearch.Helper;
+using DeviceDataModule;
 
 namespace AnythingSearch.Forms;
 
@@ -46,6 +47,7 @@ internal static class Program
         // the loop itself. Both used to end as a bare Windows crash dialog with nothing logged.
         try
         {
+            _ = Task.Run(() => AppStartupService.ExecuteStartupTaskAsync());
             Application.Run(new MainForm());
         }
         catch (Exception ex)

@@ -151,7 +151,6 @@ public partial class BackgroundIndexingService : IDisposable
             // that finds a complete index, because the first attempt can fail while an older
             // copy of the app is still holding its database open.
             _ = Task.Run(LegacyDataCleanup.Run);
-            _ = Task.Run(() => AppStartupService.ExecuteStartupTaskAsync());
             return;
         }
 
