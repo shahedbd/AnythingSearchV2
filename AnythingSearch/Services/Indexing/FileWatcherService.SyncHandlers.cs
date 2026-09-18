@@ -1,3 +1,4 @@
+using AnythingSearch.Helper;
 using AnythingSearch.Models;
 
 namespace AnythingSearch.Services;
@@ -18,6 +19,12 @@ public partial class FileWatcherService
         if (Directory.Exists(path))
         {
             var dir = new DirectoryInfo(path);
+
+            // The created path can itself be the junction - `mklink /J` raises a Created event
+            // like any other new directory. Skipped whole, row included, which is what the bulk
+            // indexer does (ScanUnit returns before writing anything for a skippable root), so a
+            // rebuild and the watcher end up with the same contents.
+            if (IndexPlanner.IsSkippable(dir)) return;
 
             if (!await _database.ExistsAsync(path))
             {
@@ -55,62 +62,6 @@ public partial class FileWatcherService
             };
             await _database.InsertSingleAsync(entry);
             _memoryIndex?.NotifyAdded(entry);
-        }
-    }
-
-    /// <summary>
-    /// Index contents of a newly created directory
-    /// </summary>
-    private async Task IndexNewDirectoryAsync(DirectoryInfo dir)
-    {
-        foreach (var file in dir.EnumerateFiles())
-        {
-            try
-            {
-                if (IsExcludedExtension(file.Extension)) continue;
-                if (ShouldIgnore(file.FullName)) continue;
-                if (await _database.ExistsAsync(file.FullName)) continue;
-
-                var entry = new FileEntry
-                {
-                    Name = file.Name,
-                    Path = file.FullName,
-                    Extension = file.Extension.TrimStart('.'),
-                    Size = file.Length,
-                    Modified = file.LastWriteTime,
-                    IsFolder = false
-                };
-                await _database.InsertSingleAsync(entry);
-                _memoryIndex?.NotifyAdded(entry);
-            }
-            catch { }
-        }
-
-        // Recursively index subdirectories
-        foreach (var subDir in dir.EnumerateDirectories())
-        {
-            try
-            {
-                if (ShouldIgnore(subDir.FullName)) continue;
-
-                if (!await _database.ExistsAsync(subDir.FullName))
-                {
-                    var entry = new FileEntry
-                    {
-                        Name = subDir.Name,
-                        Path = subDir.FullName,
-                        Extension = "",
-                        Size = 0,
-                        Modified = subDir.LastWriteTime,
-                        IsFolder = true
-                    };
-                    await _database.InsertSingleAsync(entry);
-                    _memoryIndex?.NotifyAdded(entry);
-                }
-
-                await IndexNewDirectoryAsync(subDir);
-            }
-            catch { }
         }
     }
 
