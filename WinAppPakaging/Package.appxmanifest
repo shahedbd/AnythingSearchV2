@@ -15,7 +15,7 @@
 	<Identity
 		Name="4789ZeroByte.AnythingSearch"
 		Publisher="CN=8545CA03-A40F-42F8-9E80-790ABC2452FC"
-		Version="2.0.0.0" />
+		Version="2.0.1.0" />
 
 	<Properties>
 		<DisplayName>Anything Search</DisplayName>
