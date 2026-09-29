@@ -16,6 +16,10 @@ namespace AnythingSearch.Helper
         public static string AppVersion = "Version 2.0.1.0";
         public static int AppReleaseVersion = 2010;
 
+        public const string LifetimeSubscriptionStoreId = "9NDK4ZTL7ML9";
+        public const string LifetimeSubscriptionStorePrice = "$9.99/year";
+
+
         /// <summary>
         /// Folder under %LocalAppData% holding the index database, the indexing state file,
         /// settings, recent searches and logs. Everything reaches it through

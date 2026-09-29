@@ -1,6 +1,6 @@
 ****************************************************
 * If required write md file doc here:
-C:\Users\Public\src\MS_Store_App\AnythingSearch\Doc\Requirements
+G:\src\MS_Store_App\AnythingSearchV2\Doc\Requirements
 - Keep files small: Target ≤300 lines; 400 lines absolute maximum. Split large files into focused modules.
 - Skip build, test, publish, deployment, migration, and package commands unless explicitly requested; I will handle them.
 - Optimize token usage: inspect only relevant files and make the smallest necessary changes.
@@ -9,6 +9,74 @@ C:\Users\Public\src\MS_Store_App\AnythingSearch\Doc\Requirements
 - Preserve existing behavior unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
+By following doc:
+G:\src\MS_Store_App\AnythingSearchV2\Doc\Requirements\05_Go_Pro_Design.md
+G:\src\MS_Store_App\AnythingSearchV2\Doc\Requirements\06_Go_Pro_Implementation_Plan.md
+
+And existing implemenetaion:
+G:\src\MS_Store_App\NetSpeedMeterPlus\NetSpeedMeterPlus
+
+
+Now start implementing Go Pro feature.
+
+- Keep files small: Target ≤300 lines; 400 lines absolute maximum. Split large files into focused modules.
+- Skip build, test, publish, deployment, migration, and package commands unless explicitly requested; I will handle them.
+- Optimize token usage: inspect only relevant files and make the smallest necessary changes.
+- Follow the existing architecture, documentation, patterns, naming conventions, and coding style.
+- Reuse existing code and dependencies; avoid unnecessary refactoring or new dependencies.
+- Preserve existing behavior unless the task requires otherwise.
+- Keep responses concise and report only important changes, affected files, and caveats.
+
+
+
+
+
+
+
+
+Price — fallback text for AppConfig.ProPrice (draft uses $4.99)? Store price wins at runtime anyway.
+-i haved added: /Helper/AppConfig.cs
+public const string LifetimeSubscriptionStoreId = "9NDK4ZTL7ML9";
+        public const string LifetimeSubscriptionStorePrice = "$9.99/year";
+
+
+Header button — OK to insert [* Go Pro] left of Rebuild, or prefer menu/About only?
+- ok
+Support — same SupportEmail with [PRO] subject, or a separate address?
+-use it:/Helper/AppConfig.cs
+        public static string SupportEmail = "shahedbddev@gmail.com";
+Promo slot for Free users — should the 15-day promo (§2-B) open the Anything Search Pro dialog instead of CPU-Zx Pro? (Default: leave as is.)
+- skip it
+Existing users — any grandfathering for users of the old paid version? (Default: none.)
+- skip it
+
+
+
+
+
+Now design Go Pro feature. ASCII charecters UI. Step by step.
+-One time payment
+-No ads
+-Life time update
+-Life time support
+
+
+Anything Search Pro | Durable overview
+Store ID: 9NDK4ZTL7ML9
+
+Copy Go Pro feature from this app:
+G:\src\MS_Store_App\NetSpeedMeterPlus\NetSpeedMeterPlus
+
+I will review it first.
+Write md file doc here:
+G:\src\MS_Store_App\AnythingSearchV2\Doc\Requirements
+
+
+
+
+
+
+
 Fix dark mode feature(Theme) issue:
 -in search result 
 
