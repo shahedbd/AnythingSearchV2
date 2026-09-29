@@ -1,401 +1,125 @@
-using AnythingSearch.Database;
 using AnythingSearch.Helper;
 using AnythingSearch.Services;
-using System.Diagnostics;
-using System.Reflection;
+using AnythingSearch.UserControls.About;
 
 namespace AnythingSearch.Forms;
 
+/// <summary>
+/// The one About dialog, for both editions. Ported from NetSpeedMeterPlus's AboutForm: a
+/// scrolling stack of header, feature cards and footer (UserControls/About). What it shows
+/// comes from AboutTierPlan.ForCurrentTier(), so a Free user sees what is included plus the
+/// Go Pro offer, and a Pro owner sees what the purchase covers with no upsell at all.
+///
+/// Colors come from MainForm.AppColors, which follows the active light/dark theme. The theme
+/// can't change while this modal dialog is open (the toggle is on the main window), so it is
+/// read once per build rather than listened to.
+/// </summary>
 public partial class AboutForm : Form
 {
-    // Production Release Information - all of it from Helper/AppConfig, so the About
-    // dialog, the window title and the tray text can never drift apart.
-    private static readonly string AppName = AppConfig.AppName;
-    private static readonly string AppWebsite = AppConfig.ProductPageUrl;
-    private static readonly string AppEmail = AppConfig.SupportEmail;
-    private static readonly string AppTagline = AppConfig.AppSubtitle;
-    private static readonly string DeveloperName = AppConfig.CompanyName;
-
-    // Colors - follow the active light/dark theme (ThemeManager, via MainForm.AppColors). Filled
-    // accents (version badge, Close button, fallback logo) keep the brand blue in both themes
-    // so their white text keeps its contrast; the theme's Primary is too light for that in dark.
-    private static readonly Color BrandFill = Color.FromArgb(0, 120, 212);
-    private static readonly Color BrandFillHover = Color.FromArgb(0, 140, 240);
-    private static Color PrimaryColor => MainForm.AppColors.Primary;
-    private static Color PrimaryDark => MainForm.AppColors.PrimaryDark;
-    private static Color BackgroundColor => MainForm.AppColors.Background;
-    private static Color CardColor => MainForm.AppColors.Surface;
-    private static Color TextPrimary => MainForm.AppColors.TextPrimary;
-    private static Color TextSecondary => MainForm.AppColors.TextSecondary;
-    private static Color TextMuted => MainForm.AppColors.TextMuted;
-
-    // DPI scale factor
-    private float _dpiScale = 1.0f;
+    private readonly float _dpiScale;
+    private FlowLayoutPanel _stack = null!;
 
     public AboutForm()
     {
-        InitializeComponent();
-        InitializeUI();
-        HandleCreated += (_, _) => NativeTheme.ApplyTitleBar(this, ThemeManager.Instance.IsDarkTheme);
+        // Same DPI model as MainForm/GoProForm: 96-dpi baseline, every pixel through S().
+        AutoScaleMode = AutoScaleMode.Dpi;
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        Font = new Font("Segoe UI", 9F);
+        _dpiScale = DeviceDpi / 96f;
+
+        ConfigureForm();
+        BuildLayout();
+
+        HandleCreated += (_, _) =>
+        {
+            bool isDark = ThemeManager.Instance.IsDarkTheme;
+            NativeTheme.ApplyTitleBar(this, isDark);
+            NativeTheme.ApplyScrollBars([_stack], isDark);
+        };
     }
 
-    private void InitializeComponent()
+    private int S(int value) => (int)Math.Round(value * _dpiScale);
+
+    // ─────────────────────────────────────────────────────────────────────
+    // FORM
+    // ─────────────────────────────────────────────────────────────────────
+
+    private void ConfigureForm()
     {
-        SuspendLayout();
-
-        // CRITICAL: DPI Scaling for Microsoft Store compliance
-        this.AutoScaleMode = AutoScaleMode.Dpi;
-        this.AutoScaleDimensions = new SizeF(96F, 96F);
-        this.Font = new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
-
-        // Get DPI scale factor
-        _dpiScale = this.DeviceDpi / 96f;
-
-        // Scale the form size
-        int baseWidth = 550;
-        int baseHeight = 680;
-        ClientSize = new Size((int)(baseWidth * _dpiScale), (int)(baseHeight * _dpiScale));
-
+        // The system title bar carries the caption and the close button; the footer
+        // deliberately has no Close button of its own (see AboutFooterControl).
         FormBorderStyle = FormBorderStyle.FixedDialog;
+        StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false;
         MinimizeBox = false;
+        ShowInTaskbar = false;
+
+        ClientSize = new Size(S(560), S(720));
+        BackColor = MainForm.AppColors.Background;
+        Text = $"About {AppConfig.AppName}";
         Name = "AboutForm";
-        StartPosition = FormStartPosition.CenterParent;
-        Text = $"About {AppName}";
-        BackColor = BackgroundColor;
+        Icon = File.Exists(AppConfig.FaviconPath) ? new Icon(AppConfig.FaviconPath) : null;
 
-        // Load icon
-        try
+        _stack = new FlowLayoutPanel
         {
-            var iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "favicon.ico");
-            if (File.Exists(iconPath))
-            {
-                this.Icon = new Icon(iconPath);
-            }
-        }
-        catch { }
-
-        ResumeLayout(false);
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            AutoScroll = true,
+            BackColor = MainForm.AppColors.Background,
+            Padding = new Padding(S(24), S(16), S(24), S(16))
+        };
+        Controls.Add(_stack);
     }
 
-    // Helper method to scale values
-    private int Scale(int value) => (int)(value * _dpiScale);
+    // ─────────────────────────────────────────────────────────────────────
+    // LAYOUT
+    // ─────────────────────────────────────────────────────────────────────
 
-    private void InitializeUI()
+    /// <summary>(Re)builds the stack for the current edition - called again after Go Pro,
+    /// since a purchase there changes which cards and badge this screen shows.</summary>
+    private void BuildLayout()
     {
-        int centerX = this.ClientSize.Width / 2;
+        var plan = AboutTierPlan.ForCurrentTier();
 
-        // ═══════════════════════════════════════════════════════════
-        // HEADER SECTION
-        // ═══════════════════════════════════════════════════════════
+        _stack.SuspendLayout();
+        foreach (Control old in _stack.Controls.Cast<Control>().ToList())
+            old.Dispose();
 
-        // App Icon
-        int iconSize = Scale(80);
-        PictureBox iconLogo = new PictureBox
+        // Content width leaves room for the scrollbar so nothing reflows when an edition
+        // shows a longer list.
+        int width = ClientSize.Width - S(48) - SystemInformation.VerticalScrollBarWidth;
+
+        var header = new AboutHeaderControl(_dpiScale, width, plan.EditionLabel, plan.EditionColor);
+        header.EditionBadgeClicked += (_, _) => OpenGoPro();
+        _stack.Controls.Add(header);
+
+        foreach (var spec in plan.Cards)
         {
-            Image = GetAppIcon(),
-            SizeMode = PictureBoxSizeMode.Zoom,
-            Size = new Size(iconSize, iconSize),
-            Location = new Point(centerX - iconSize / 2, Scale(25)),
-            BackColor = Color.Transparent
-        };
-        this.Controls.Add(iconLogo);
-
-        // App Name
-        Label lblAppName = new Label
-        {
-            Text = AppName,
-            Font = new Font("Segoe UI", 24, FontStyle.Bold),
-            ForeColor = PrimaryColor,
-            AutoSize = true,
-            BackColor = Color.Transparent
-        };
-        int appNameWidth = TextRenderer.MeasureText(lblAppName.Text, lblAppName.Font).Width;
-        lblAppName.Location = new Point(centerX - appNameWidth / 2, Scale(115));
-        this.Controls.Add(lblAppName);
-
-        // Version Badge
-        int badgeWidth = Scale(120);
-        int badgeHeight = Scale(24);
-        Label lblVersion = new Label
-        {
-            Text = AppConfig.AppVersion,
-            Font = new Font("Segoe UI", 9, FontStyle.Bold),
-            ForeColor = Color.White,
-            BackColor = BrandFill,
-            AutoSize = false,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Size = new Size(badgeWidth, badgeHeight),
-            Padding = new Padding(Scale(8), Scale(4), Scale(8), Scale(4))
-        };
-        lblVersion.Location = new Point(centerX - badgeWidth / 2, Scale(155));
-        this.Controls.Add(lblVersion);
-        AddEditionBadge(new Point(lblVersion.Right + Scale(8), lblVersion.Top), badgeHeight);
-
-        // Tagline
-        Label lblTagline = new Label
-        {
-            Text = AppTagline,
-            Font = new Font("Segoe UI", 10, FontStyle.Italic),
-            ForeColor = TextSecondary,
-            AutoSize = true,
-            BackColor = Color.Transparent
-        };
-        int taglineWidth = TextRenderer.MeasureText(lblTagline.Text, lblTagline.Font).Width;
-        lblTagline.Location = new Point(centerX - taglineWidth / 2, Scale(190));
-        this.Controls.Add(lblTagline);
-
-        // ═══════════════════════════════════════════════════════════
-        // FEATURES CARD
-        // ═══════════════════════════════════════════════════════════
-
-        Panel featuresCard = CreateCard(Scale(25), Scale(225), this.ClientSize.Width - Scale(50), Scale(220));
-
-        Label lblFeaturesTitle = new Label
-        {
-            Text = "✨ Key Features",
-            Font = new Font("Segoe UI Semibold", 11),
-            ForeColor = PrimaryColor,
-            AutoSize = true,
-            Location = new Point(Scale(15), Scale(12)),
-            BackColor = Color.Transparent
-        };
-        featuresCard.Controls.Add(lblFeaturesTitle);
-
-        string[] features = new[]
-        {
-            "🔍  Instant search across millions of files",
-            "⚡  Real-time results as you type",
-            "📊  Smart indexing with background updates",
-            "👁️  Auto-watch for file system changes",
-            "🎨  Modern, clean Windows 11 style interface",
-            "💾  Lightweight SQLite database",
-            "🚀  Built with .NET 8.0 for optimal performance"
-        };
-
-        int yPos = Scale(42);
-        int lineHeight = Scale(24);
-        foreach (var feature in features)
-        {
-            var lbl = new Label
-            {
-                Text = feature,
-                Font = new Font("Segoe UI", 9.5f),
-                ForeColor = TextPrimary,
-                AutoSize = true,
-                Location = new Point(Scale(20), yPos),
-                BackColor = Color.Transparent
-            };
-            featuresCard.Controls.Add(lbl);
-            yPos += lineHeight;
+            var card = new AboutFeatureCard(_dpiScale, width, spec);
+            card.CtaClicked += (_, _) => OpenGoPro();
+            _stack.Controls.Add(card);
         }
 
-        this.Controls.Add(featuresCard);
-
-        // ═══════════════════════════════════════════════════════════
-        // CONTACT CARD
-        // ═══════════════════════════════════════════════════════════
-
-        Panel contactCard = CreateCard(Scale(25), Scale(455), this.ClientSize.Width - Scale(50), Scale(120));
-
-        Label lblContactTitle = new Label
-        {
-            Text = "📬 Get in Touch",
-            Font = new Font("Segoe UI Semibold", 11),
-            ForeColor = PrimaryColor,
-            AutoSize = true,
-            Location = new Point(Scale(15), Scale(12)),
-            BackColor = Color.Transparent
-        };
-        contactCard.Controls.Add(lblContactTitle);
-
-        // Website Link
-        var lblWebsite = CreateLinkLabel("🌐  Website:", AppWebsite, Scale(45));
-        contactCard.Controls.Add(lblWebsite.Item1);
-        contactCard.Controls.Add(lblWebsite.Item2);
-
-        // Email Link
-        var lblEmail = CreateLinkLabel("📧  Email:", AppEmail, Scale(72));
-        contactCard.Controls.Add(lblEmail.Item1);
-        contactCard.Controls.Add(lblEmail.Item2);
-
-        this.Controls.Add(contactCard);
-
-        // ═══════════════════════════════════════════════════════════
-        // BUTTONS
-        // ═══════════════════════════════════════════════════════════
-
-        int btnWidth = Scale(160);
-        int btnHeight = Scale(38);
-        int btnY = Scale(590);
-        int btnSpacing = Scale(10);
-
-        // Check for Updates Button
-        Button btnUpdate = new Button
-        {
-            Text = "🔄  Check for Updates",
-            Font = new Font("Segoe UI", 9.5f),
-            Size = new Size(btnWidth, btnHeight),
-            Location = new Point(centerX - btnWidth - btnSpacing / 2, btnY),
-            BackColor = CardColor,
-            ForeColor = PrimaryColor,
-            FlatStyle = FlatStyle.Flat,
-            Cursor = Cursors.Hand
-        };
-        btnUpdate.FlatAppearance.BorderColor = PrimaryColor;
-        btnUpdate.FlatAppearance.BorderSize = 1;
-        btnUpdate.FlatAppearance.MouseOverBackColor = MainForm.AppColors.Hover;
-        btnUpdate.Click += (s, e) =>
-        {
-            try
-            {
-                Process.Start(new ProcessStartInfo(AppWebsite) { UseShellExecute = true });
-            }
-            catch { }
-        };
-        this.Controls.Add(btnUpdate);
-
-        // Close Button
-        int closeBtnWidth = Scale(120);
-        Button btnClose = new Button
-        {
-            Text = "✕  Close",
-            Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
-            Size = new Size(closeBtnWidth, btnHeight),
-            Location = new Point(centerX + btnSpacing / 2, btnY),
-            BackColor = BrandFill,
-            ForeColor = Color.White,
-            FlatStyle = FlatStyle.Flat,
-            Cursor = Cursors.Hand
-        };
-        btnClose.FlatAppearance.BorderSize = 0;
-        btnClose.FlatAppearance.MouseOverBackColor = BrandFillHover;
-        btnClose.Click += (s, e) => this.Close();
-        this.Controls.Add(btnClose);
-
-        // ═══════════════════════════════════════════════════════════
-        // FOOTER
-        // ═══════════════════════════════════════════════════════════
-
-        // Developer
-        Label lblDeveloper = new Label
-        {
-            Text = $"Developed with ❤️ by {DeveloperName}",
-            Font = new Font("Segoe UI", 9),
-            ForeColor = TextSecondary,
-            AutoSize = true,
-            BackColor = Color.Transparent
-        };
-        int devWidth = TextRenderer.MeasureText(lblDeveloper.Text, lblDeveloper.Font).Width;
-        lblDeveloper.Location = new Point(centerX - devWidth / 2, Scale(640));
-        this.Controls.Add(lblDeveloper);
-
-        // Copyright
-        Label lblCopyright = new Label
-        {
-            Text = AppConfig.Copyright,
-            Font = new Font("Segoe UI", 8),
-            ForeColor = TextMuted,
-            AutoSize = true,
-            BackColor = Color.Transparent
-        };
-        int copyWidth = TextRenderer.MeasureText(lblCopyright.Text, lblCopyright.Font).Width;
-        lblCopyright.Location = new Point(centerX - copyWidth / 2, Scale(658));
-        this.Controls.Add(lblCopyright);
+        _stack.Controls.Add(new AboutFooterControl(_dpiScale, width));
+        _stack.ResumeLayout();
     }
 
-    private Panel CreateCard(int x, int y, int width, int height)
+    /// <summary>
+    /// Opens at the top. WinForms scrolls an AutoScroll container to whichever child holds
+    /// focus, and the first selectable control here is the CTA further down the stack - which
+    /// would land the dialog mid-page on open.
+    /// </summary>
+    protected override void OnShown(EventArgs e)
     {
-        var card = new Panel
-        {
-            Location = new Point(x, y),
-            Size = new Size(width, height),
-            BackColor = CardColor
-        };
-        card.Paint += (s, e) =>
-        {
-            using var pen = new Pen(MainForm.AppColors.Border, 1);
-            e.Graphics.DrawRectangle(pen, 0, 0, card.Width - 1, card.Height - 1);
-        };
-        return card;
+        base.OnShown(e);
+        ScrollToTop();
     }
 
-    private (Label, LinkLabel) CreateLinkLabel(string label, string linkText, int yPos)
+    private void ScrollToTop()
     {
-        var lbl = new Label
-        {
-            Text = label,
-            Font = new Font("Segoe UI", 9.5f),
-            ForeColor = TextPrimary,
-            AutoSize = true,
-            Location = new Point(Scale(20), yPos),
-            BackColor = Color.Transparent
-        };
-
-        var link = new LinkLabel
-        {
-            Text = linkText,
-            Font = new Font("Segoe UI", 9.5f),
-            LinkColor = PrimaryColor,
-            ActiveLinkColor = PrimaryDark,
-            AutoSize = true,
-            Location = new Point(Scale(105), yPos),
-            BackColor = Color.Transparent
-        };
-        link.LinkClicked += (s, e) =>
-        {
-            try
-            {
-                if (linkText.Contains("@"))
-                {
-                    Process.Start(new ProcessStartInfo($"mailto:{linkText}") { UseShellExecute = true });
-                }
-                else
-                {
-                    Process.Start(new ProcessStartInfo(linkText) { UseShellExecute = true });
-                }
-            }
-            catch { }
-        };
-
-        return (lbl, link);
-    }
-
-    private Image GetAppIcon()
-    {
-        try
-        {
-            var iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "favicon.ico");
-            if (File.Exists(iconPath))
-            {
-                int iconSize = Scale(80);
-                using var icon = new Icon(iconPath, iconSize, iconSize);
-                return icon.ToBitmap();
-            }
-        }
-        catch { }
-
-        // Fallback: Create a modern icon
-        int size = Scale(80);
-        var bmp = new Bitmap(size, size);
-        using (var g = Graphics.FromImage(bmp))
-        {
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-
-            // Draw circle background
-            using (var brush = new SolidBrush(BrandFill))
-            {
-                g.FillEllipse(brush, 2, 2, size - 4, size - 4);
-            }
-
-            // Draw search icon (scaled)
-            float iconScale = size / 80f;
-            using (var pen = new Pen(Color.White, 4 * iconScale))
-            {
-                g.DrawEllipse(pen, 20 * iconScale, 18 * iconScale, 32 * iconScale, 32 * iconScale);
-                g.DrawLine(pen, 46 * iconScale, 46 * iconScale, 58 * iconScale, 58 * iconScale);
-            }
-        }
-        return bmp;
+        ActiveControl = null;
+        _stack.AutoScrollPosition = Point.Empty;
+        _stack.PerformLayout();
     }
 }

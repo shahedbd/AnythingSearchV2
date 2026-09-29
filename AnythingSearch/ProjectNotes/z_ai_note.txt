@@ -9,6 +9,15 @@ G:\src\MS_Store_App\AnythingSearchV2\Doc\Requirements
 - Preserve existing behaviour unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
+Now improve and update About UI as:
+G:\src\MS_Store_App\NetSpeedMeterPlus\NetSpeedMeterPlus\Forms\AboutForm.cs
+G:\src\MS_Store_App\NetSpeedMeterPlus\NetSpeedMeterPlus\UserControls\About
+
+
+
+
+
+
 Now implement missing dark mode in: /Forms/AboutForm.cs
 
 

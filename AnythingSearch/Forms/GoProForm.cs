@@ -15,8 +15,9 @@ public sealed partial class GoProForm : Form
 {
     private static readonly Color Accent = ColorIcons.ProStar.Color;
 
-    /// <summary>(Free title, Pro title, detail) - the four benefits the add-on sells.</summary>
-    private static readonly (string Title, string ProTitle, string Detail)[] Benefits =
+    /// <summary>(Free title, Pro title, detail) - the four benefits the add-on sells. Also
+    /// listed by the About dialog (UserControls/About/AboutContent).</summary>
+    internal static readonly (string Title, string ProTitle, string Detail)[] Benefits =
     {
         ("One-time payment", "Paid once - yours for life", "No subscription. No renewals."),
         ("No ads", "No ads", "No promo pages or browser tabs, ever."),

@@ -51,6 +51,11 @@ public static class ColorIcons
     public static readonly ColorIcon CheckMark = new("\uE73E", Green);
     public static readonly ColorIcon Mail = new("\uE715", Blue);
 
+    // About - feature rows
+    public static readonly ColorIcon AutoWatch = new("\uE7B3", Teal);
+    public static readonly ColorIcon History = new("\uE81C", Cyan);
+    public static readonly ColorIcon Lightning = new("\uE945", Amber);
+
     // Results context menu
     public static readonly ColorIcon Open = new("\uE8E5", Blue);
     public static readonly ColorIcon OpenLocation = new("\uE838", Orange);
