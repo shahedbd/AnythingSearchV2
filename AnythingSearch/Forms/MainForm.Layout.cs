@@ -158,9 +158,10 @@ public partial class MainForm
         int rebuildBtnWidth = (int)(130 * dpiScale);
         int settingsBtnWidth = (int)(110 * dpiScale);
         int checkboxWidth = (int)(130 * dpiScale);
+        int themeBtnWidth = controlHeight;  // square icon button
 
         // Calculate right-side controls total width
-        int rightControlsWidth = rebuildBtnWidth + spacing + settingsBtnWidth + spacing + checkboxWidth + padding;
+        int rightControlsWidth = rebuildBtnWidth + spacing + settingsBtnWidth + spacing + checkboxWidth + spacing + themeBtnWidth + padding;
 
         // Search Container - takes remaining space
         int searchWidth = this.ClientSize.Width - rightControlsWidth - padding - spacing;
@@ -250,7 +251,11 @@ public partial class MainForm
         // Calculate button positions from right edge
         int rightEdge = this.ClientSize.Width - padding;
 
-        // Auto-Watch checkbox (rightmost)
+        // Dark/light theme toggle (rightmost)
+        btnTheme = CreateThemeButton(new Point(rightEdge - themeBtnWidth, padding), new Size(themeBtnWidth, controlHeight));
+        rightEdge -= themeBtnWidth + spacing;
+
+        // Auto-Watch checkbox
         chkAutoWatch = new CheckBox
         {
             Location = new Point(rightEdge - checkboxWidth, padding + (int)(7 * dpiScale)),
@@ -277,7 +282,7 @@ public partial class MainForm
         btnIndex.Click += BtnIndex_Click;
         btnIndex.Anchor = AnchorStyles.Top | AnchorStyles.Right;
 
-        pnlHeader.Controls.AddRange(new Control[] { pnlSearchContainer, btnIndex, btnSettings, chkAutoWatch });
+        pnlHeader.Controls.AddRange(new Control[] { pnlSearchContainer, btnIndex, btnSettings, chkAutoWatch, btnTheme });
         this.Controls.Add(pnlHeader);
     }
 
@@ -315,7 +320,7 @@ public partial class MainForm
         // Subtle border
         pnlRecentSearches.Paint += (s, e) =>
         {
-            using var pen = new Pen(Color.FromArgb(225, 225, 225), 1);
+            using var pen = new Pen(AppColors.Border, 1);
             e.Graphics.DrawRectangle(pen, 0, 0, pnlRecentSearches.Width - 1, pnlRecentSearches.Height - 1);
         };
 
@@ -430,7 +435,7 @@ public partial class MainForm
         // Simple border paint
         dgvResults.Paint += (s, e) =>
         {
-            using var pen = new Pen(Color.FromArgb(200, 200, 200), 1);
+            using var pen = new Pen(AppColors.Border, 1);
             e.Graphics.DrawRectangle(pen, 0, 0, dgvResults.Width - 1, dgvResults.Height - 1);
         };
 

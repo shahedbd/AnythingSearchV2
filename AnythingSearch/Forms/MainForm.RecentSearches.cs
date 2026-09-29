@@ -47,7 +47,7 @@ public partial class MainForm
             {
                 Text = statusText,
                 Font = new Font("Segoe UI", 10F),
-                ForeColor = Color.FromArgb(140, 140, 140),
+                ForeColor = AppColors.TextMuted,
                 AutoSize = false,
                 Size = new Size(emptyPanel.Width, (int)(80 * dpiScale)),
                 Location = new Point((int)(10 * dpiScale), (int)(15 * dpiScale)),
@@ -71,27 +71,27 @@ public partial class MainForm
             {
                 Size = new Size(panelWidth, panelHeight),
                 Margin = new Padding((int)(3 * dpiScale), (int)(2 * dpiScale), (int)(3 * dpiScale), (int)(2 * dpiScale)),
-                BackColor = Color.White,
+                BackColor = AppColors.Surface,
                 Cursor = Cursors.Hand
             };
 
             // Subtle border on paint
             panel.Paint += (s, e) =>
             {
-                using var pen = new Pen(Color.FromArgb(230, 230, 230), 1);
+                using var pen = new Pen(AppColors.Border, 1);
                 e.Graphics.DrawRectangle(pen, 0, 0, panel.Width - 1, panel.Height - 1);
             };
 
             // Hover effect
-            panel.MouseEnter += (s, e) => panel.BackColor = Color.FromArgb(248, 250, 252);
-            panel.MouseLeave += (s, e) => panel.BackColor = Color.White;
+            panel.MouseEnter += (s, e) => panel.BackColor = AppColors.Hover;
+            panel.MouseLeave += (s, e) => panel.BackColor = AppColors.Surface;
 
             // Query label - the search term (compact, professional)
             var lblQuery = new Label
             {
                 Text = item.Query,
                 Font = new Font("Segoe UI", 10F, FontStyle.Regular),
-                ForeColor = Color.FromArgb(0, 102, 204),  // Professional blue
+                ForeColor = AppColors.Link,  // Professional blue
                 Location = new Point(leftPadding, (int)(8 * dpiScale)),
                 Size = new Size(panelWidth - leftPadding - btnSize - (int)(16 * dpiScale), (int)(20 * dpiScale)),
                 AutoSize = false,
@@ -104,7 +104,7 @@ public partial class MainForm
             {
                 Text = $"{item.ResultCount:N0} results  •  {GetRelativeTime(item.Timestamp)}",
                 Font = new Font("Segoe UI", 8.5F),
-                ForeColor = Color.FromArgb(130, 130, 130),
+                ForeColor = AppColors.TextMuted,
                 Location = new Point(leftPadding, (int)(28 * dpiScale)),
                 Size = new Size(panelWidth - leftPadding - btnSize - (int)(16 * dpiScale), (int)(16 * dpiScale)),
                 AutoSize = false,
@@ -119,17 +119,17 @@ public partial class MainForm
                 Size = new Size(btnSize, btnSize),
                 Location = new Point(panelWidth - btnSize - (int)(10 * dpiScale), (panelHeight - btnSize) / 2),
                 FlatStyle = FlatStyle.Flat,
-                ForeColor = Color.FromArgb(180, 180, 180),
+                ForeColor = AppColors.TextMuted,
                 Cursor = Cursors.Hand,
                 Font = new Font("Segoe UI", 12F, FontStyle.Regular),
                 BackColor = Color.Transparent,
                 Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
             btnRemove.FlatAppearance.BorderSize = 0;
-            btnRemove.FlatAppearance.MouseOverBackColor = Color.FromArgb(255, 235, 235);
-            btnRemove.FlatAppearance.MouseDownBackColor = Color.FromArgb(255, 220, 220);
-            btnRemove.MouseEnter += (s, e) => btnRemove.ForeColor = Color.FromArgb(220, 80, 80);
-            btnRemove.MouseLeave += (s, e) => btnRemove.ForeColor = Color.FromArgb(180, 180, 180);
+            btnRemove.FlatAppearance.MouseOverBackColor = AppColors.DangerHover;
+            btnRemove.FlatAppearance.MouseDownBackColor = AppColors.DangerHover;
+            btnRemove.MouseEnter += (s, e) => btnRemove.ForeColor = AppColors.DangerText;
+            btnRemove.MouseLeave += (s, e) => btnRemove.ForeColor = AppColors.TextMuted;
             btnRemove.Click += (s, e) =>
             {
                 _recentSearchService.RemoveSearch(item.Query);
@@ -147,10 +147,10 @@ public partial class MainForm
             panel.Click += clickHandler;
             lblQuery.Click += clickHandler;
             lblInfo.Click += clickHandler;
-            lblQuery.MouseEnter += (s, e) => panel.BackColor = Color.FromArgb(248, 250, 252);
-            lblQuery.MouseLeave += (s, e) => panel.BackColor = Color.White;
-            lblInfo.MouseEnter += (s, e) => panel.BackColor = Color.FromArgb(248, 250, 252);
-            lblInfo.MouseLeave += (s, e) => panel.BackColor = Color.White;
+            lblQuery.MouseEnter += (s, e) => panel.BackColor = AppColors.Hover;
+            lblQuery.MouseLeave += (s, e) => panel.BackColor = AppColors.Surface;
+            lblInfo.MouseEnter += (s, e) => panel.BackColor = AppColors.Hover;
+            lblInfo.MouseLeave += (s, e) => panel.BackColor = AppColors.Surface;
 
             panel.Controls.AddRange(new Control[] { lblQuery, lblInfo, btnRemove });
             flpRecentSearches.Controls.Add(panel);

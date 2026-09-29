@@ -106,6 +106,11 @@ public class AppSettings
     /// </summary>
     public bool AutoWatch { get; set; } = true;
 
+    /// <summary>
+    /// Dark theme on/off. Toggled by the header's theme button via ThemeManager.
+    /// </summary>
+    public bool IsDarkMode { get; set; } = false;
+
     // ── Installation / telemetry ─────────────────────────────────────
     public int AppVersion { get; set; } = 0;
     public int LaunchCount { get; set; } = 0;

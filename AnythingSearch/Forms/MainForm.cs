@@ -106,6 +106,7 @@ public partial class MainForm : Form
         _fileIcon = GetStockIcon(StockIconId.DocumentNotAssociated);
 
         InitializeComponent();
+        InitializeTheme();
         InitializeSystemTray();
         InitializeAsync();      
     }

@@ -139,7 +139,7 @@ public partial class MainForm
         // Path column - gray text like Everything
         if (dgvResults.Columns[e.ColumnIndex].Name == "Path" && e.Value != null)
         {
-            e.CellStyle.ForeColor = Color.FromArgb(100, 100, 100);
+            e.CellStyle.ForeColor = AppColors.TextSecondary;
             e.CellStyle.Font = new Font("Segoe UI", 9F);
         }
         // Name column - black text
@@ -150,13 +150,13 @@ public partial class MainForm
         // Size column - right aligned gray
         else if (dgvResults.Columns[e.ColumnIndex].Name == "Size" && e.Value != null)
         {
-            e.CellStyle.ForeColor = Color.FromArgb(80, 80, 80);
+            e.CellStyle.ForeColor = AppColors.TextSecondary;
             e.CellStyle.Font = new Font("Segoe UI", 9F);
         }
         // Date column
         else if (dgvResults.Columns[e.ColumnIndex].Name == "Modified" && e.Value != null)
         {
-            e.CellStyle.ForeColor = Color.FromArgb(80, 80, 80);
+            e.CellStyle.ForeColor = AppColors.TextSecondary;
             e.CellStyle.Font = new Font("Segoe UI", 9F);
         }
     }

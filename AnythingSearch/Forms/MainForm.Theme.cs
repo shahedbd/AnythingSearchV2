@@ -1,3 +1,5 @@
+using AnythingSearch.Services;
+
 namespace AnythingSearch.Forms;
 
 /// <summary>
@@ -6,35 +8,44 @@ namespace AnythingSearch.Forms;
 public partial class MainForm
 {
     /// <summary>
-    /// Application color palette - Modern Windows 11 style
+    /// Application color palette - Modern Windows 11 style. Every member resolves against
+    /// ThemeManager.CurrentTheme, so reads always return the active (light or dark) color.
     /// </summary>
     public static class AppColors
     {
+        private static AppTheme T => ThemeManager.Instance.CurrentTheme;
+
         // Primary colors
-        public static readonly Color Primary = Color.FromArgb(0, 120, 212);
-        public static readonly Color PrimaryDark = Color.FromArgb(0, 99, 177);
-        public static readonly Color PrimaryLight = Color.FromArgb(0, 140, 240);
+        public static Color Primary => T.Primary;
+        public static Color PrimaryDark => T.PrimaryDark;
+        public static Color PrimaryLight => T.PrimaryLight;
+        public static Color Link => T.Link;
+        public static Color SelectionBack => T.SelectionBack;
 
         // Background colors
-        public static readonly Color Background = Color.FromArgb(249, 249, 249);
-        public static readonly Color Surface = Color.White;
-        public static readonly Color StatusBar = Color.FromArgb(243, 243, 243);
-        public static readonly Color Hover = Color.FromArgb(243, 243, 243);
-        public static readonly Color Selected = Color.FromArgb(232, 240, 254);
+        public static Color Background => T.Background;
+        public static Color Surface => T.Surface;
+        public static Color SurfaceAlt => T.SurfaceAlt;
+        public static Color StatusBar => T.StatusBar;
+        public static Color GridHeader => T.GridHeader;
+        public static Color Hover => T.Hover;
+        public static Color Selected => T.Selected;
+        public static Color DangerHover => T.DangerHover;
 
         // Border colors
-        public static readonly Color Border = Color.FromArgb(229, 229, 229);
-        public static readonly Color BorderFocus = Color.FromArgb(0, 120, 212);
+        public static Color Border => T.Border;
+        public static Color BorderFocus => T.BorderFocus;
 
         // Text colors
-        public static readonly Color TextPrimary = Color.FromArgb(32, 32, 32);
-        public static readonly Color TextSecondary = Color.FromArgb(96, 96, 96);
-        public static readonly Color TextMuted = Color.FromArgb(136, 136, 136);
+        public static Color TextPrimary => T.TextPrimary;
+        public static Color TextSecondary => T.TextSecondary;
+        public static Color TextMuted => T.TextMuted;
+        public static Color DangerText => T.DangerText;
 
         // Status colors
-        public static readonly Color Success = Color.FromArgb(16, 124, 16);
-        public static readonly Color Warning = Color.FromArgb(255, 140, 0);
-        public static readonly Color Error = Color.FromArgb(196, 43, 28);
+        public static Color Success => T.Success;
+        public static Color Warning => T.Warning;
+        public static Color Error => T.Error;
     }
 
     /// <summary>
@@ -48,15 +59,11 @@ public partial class MainForm
             Location = location,
             Size = size,
             FlatStyle = FlatStyle.Flat,
-            BackColor = AppColors.Surface,
-            ForeColor = AppColors.TextPrimary,
             Font = new Font("Segoe UI", 9.5F),
             Cursor = Cursors.Hand
         };
-        btn.FlatAppearance.BorderColor = AppColors.Border;
         btn.FlatAppearance.BorderSize = 1;
-        btn.FlatAppearance.MouseOverBackColor = AppColors.Hover;
-        btn.FlatAppearance.MouseDownBackColor = AppColors.Border;
+        StyleModernButton(btn);
         return btn;
     }
 
@@ -98,7 +105,7 @@ public class ModernToolStripRenderer : ToolStripProfessionalRenderer
     {
         if (e.Item.Selected && e.Item.Enabled)
         {
-            using var brush = new SolidBrush(Color.FromArgb(232, 240, 254));
+            using var brush = new SolidBrush(MainForm.AppColors.Selected);
             e.Graphics.FillRectangle(brush, new Rectangle(2, 0, e.Item.Width - 4, e.Item.Height));
         }
         else
@@ -109,7 +116,7 @@ public class ModernToolStripRenderer : ToolStripProfessionalRenderer
 
     protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
     {
-        e.TextColor = e.Item.Enabled ? Color.FromArgb(32, 32, 32) : Color.FromArgb(160, 160, 160);
+        e.TextColor = e.Item.Enabled ? MainForm.AppColors.TextPrimary : MainForm.AppColors.TextMuted;
         base.OnRenderItemText(e);
     }
 }
@@ -119,15 +126,19 @@ public class ModernToolStripRenderer : ToolStripProfessionalRenderer
 /// </summary>
 public class ModernColorTable : ProfessionalColorTable
 {
-    public override Color MenuBorder => Color.FromArgb(229, 229, 229);
+    private static Color Surface => MainForm.AppColors.Surface;
+
+    public override Color MenuBorder => MainForm.AppColors.Border;
     public override Color MenuItemBorder => Color.Transparent;
-    public override Color MenuItemSelected => Color.FromArgb(232, 240, 254);
-    public override Color MenuStripGradientBegin => Color.White;
-    public override Color MenuStripGradientEnd => Color.White;
-    public override Color ToolStripDropDownBackground => Color.White;
-    public override Color ImageMarginGradientBegin => Color.White;
-    public override Color ImageMarginGradientMiddle => Color.White;
-    public override Color ImageMarginGradientEnd => Color.White;
-    public override Color SeparatorDark => Color.FromArgb(229, 229, 229);
-    public override Color SeparatorLight => Color.White;
+    public override Color MenuItemSelected => MainForm.AppColors.Selected;
+    public override Color MenuItemPressedGradientBegin => MainForm.AppColors.Hover;
+    public override Color MenuItemPressedGradientEnd => MainForm.AppColors.Hover;
+    public override Color MenuStripGradientBegin => Surface;
+    public override Color MenuStripGradientEnd => Surface;
+    public override Color ToolStripDropDownBackground => Surface;
+    public override Color ImageMarginGradientBegin => Surface;
+    public override Color ImageMarginGradientMiddle => Surface;
+    public override Color ImageMarginGradientEnd => Surface;
+    public override Color SeparatorDark => MainForm.AppColors.Border;
+    public override Color SeparatorLight => Surface;
 }
