@@ -17,7 +17,7 @@ public partial class MainForm
         _trayContextMenu.Font = new Font("Segoe UI", 9.5F);
         _trayContextMenu.Renderer = new ModernToolStripRenderer();
 
-        var openItem = new ToolStripMenuItem($"📂  Open {AppConfig.AppName}")
+        var openItem = new ToolStripMenuItem($"Open {AppConfig.AppName}", ColorIcons.Render(ColorIcons.OpenApp, ColorIcons.SizeFor(this)))
         {
             Font = new Font("Segoe UI", 9.5F, FontStyle.Bold)
         };
@@ -25,14 +25,14 @@ public partial class MainForm
 
         var separator1 = new ToolStripSeparator();
 
-        var rebuildItem = new ToolStripMenuItem("🔄  Rebuild Index");
+        var rebuildItem = ColorIcons.MenuItem("Rebuild Index", ColorIcons.Rebuild, this);
         rebuildItem.Click += (s, e) =>
         {
             ShowFromTray();
             BtnIndex_Click(s, e);
         };
 
-        var settingsItem = new ToolStripMenuItem("⚙️  Settings");
+        var settingsItem = ColorIcons.MenuItem("Settings", ColorIcons.Settings, this);
         settingsItem.Click += (s, e) =>
         {
             ShowFromTray();
@@ -41,13 +41,13 @@ public partial class MainForm
 
         var separator2 = new ToolStripSeparator();
 
-        var statusItem = new ToolStripMenuItem("📊  Status: Initializing...")
+        var statusItem = new ToolStripMenuItem("Status: Initializing...", ColorIcons.Render(ColorIcons.Status, ColorIcons.SizeFor(this)))
         {
             Enabled = false,
             Name = "statusItem"
         };
 
-        var sourceItem = new ToolStripMenuItem("🔍  Source: --")
+        var sourceItem = new ToolStripMenuItem("Source: --", ColorIcons.Render(ColorIcons.Search, ColorIcons.SizeFor(this)))
         {
             Enabled = false,
             Name = "sourceItem"
@@ -55,7 +55,7 @@ public partial class MainForm
 
         var separator3 = new ToolStripSeparator();
 
-        var exitItem = new ToolStripMenuItem("🚪  Exit");
+        var exitItem = ColorIcons.MenuItem("Exit", ColorIcons.Exit, this);
         exitItem.Click += TrayMenu_Exit_Click;
 
         _trayContextMenu.Items.AddRange(new ToolStripItem[]
@@ -175,7 +175,7 @@ public partial class MainForm
             _notifyIcon.Text = tooltip.Length > 63 ? tooltip.Substring(0, 60) + "..." : tooltip;
 
             if (_trayContextMenu.Items["statusItem"] is ToolStripMenuItem statusItem)
-                statusItem.Text = $"📊  {status}";
+                statusItem.Text = status;
 
             // Update source indicator
             if (_trayContextMenu.Items["sourceItem"] is ToolStripMenuItem sourceItem)
@@ -187,7 +187,7 @@ public partial class MainForm
                     SearchSource.SQLite => "Local Database",
                     _ => "Indexing..."
                 };
-                sourceItem.Text = $"🔍  Source: {sourceText}";
+                sourceItem.Text = $"Source: {sourceText}";
             }
         }
     }

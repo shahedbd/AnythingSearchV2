@@ -1,3 +1,4 @@
+using AnythingSearch.Helper;
 using AnythingSearch.Models;
 using AnythingSearch.Services;
 
@@ -123,7 +124,7 @@ public partial class MainForm
                 return;
             }
 
-            btnIndex.Text = "⏳ Indexing...";
+            ColorIcons.SetButtonIcon(btnIndex, ColorIcons.Indexing, "Indexing...");
             ApplySearchLock();
         });
     }

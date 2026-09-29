@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using AnythingSearch.Helper;
 using AnythingSearch.Services;
 
 namespace AnythingSearch.Forms;
@@ -13,10 +14,6 @@ public partial class MainForm
 {
     private Button btnTheme = null!;
     private readonly ToolTip _themeToolTip = new();
-
-    // Segoe MDL2 Assets glyphs: moon ("QuietHours") and sun ("Brightness").
-    private const string MoonGlyph = "";
-    private const string SunGlyph = "";
 
     #region Setup
 
@@ -34,7 +31,7 @@ public partial class MainForm
     private Button CreateThemeButton(Point location, Size size)
     {
         var btn = CreateModernButton(string.Empty, location, size);
-        btn.Font = new Font("Segoe MDL2 Assets", 12F);
+        btn.Font = new Font(ColorIcons.IconFontName, 12F);
         btn.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         btn.Click += (_, _) => ThemeManager.Instance.ToggleTheme();
         return btn;
@@ -70,11 +67,8 @@ public partial class MainForm
         // Header
         pnlHeader.BackColor = AppColors.Surface;
         pnlSearchContainer.BackColor = AppColors.Surface;
-        foreach (var lbl in pnlSearchContainer.Controls.OfType<Label>())
-            lbl.ForeColor = AppColors.TextMuted;
         txtSearch.BackColor = AppColors.Surface;
         txtSearch.ForeColor = txtSearch.Text == "Search files and folders..." ? AppColors.TextMuted : AppColors.TextPrimary;
-        btnClearSearch.ForeColor = AppColors.TextMuted;
         btnClearSearch.FlatAppearance.MouseOverBackColor = AppColors.DangerHover;
         chkAutoWatch.ForeColor = AppColors.TextPrimary;
         foreach (var btn in new[] { btnIndex, btnSettings, btnTheme })
@@ -136,7 +130,9 @@ public partial class MainForm
     private void UpdateThemeButtonIcon()
     {
         bool isDark = ThemeManager.Instance.IsDarkTheme;
-        btnTheme.Text = isDark ? SunGlyph : MoonGlyph;
+        var icon = isDark ? ColorIcons.Sun : ColorIcons.Moon;
+        btnTheme.Text = icon.Glyph;
+        btnTheme.ForeColor = icon.Color;
         _themeToolTip.SetToolTip(btnTheme, isDark ? "Switch to Light Mode" : "Switch to Dark Mode");
     }
 

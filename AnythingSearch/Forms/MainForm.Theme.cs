@@ -114,6 +114,18 @@ public class ModernToolStripRenderer : ToolStripProfessionalRenderer
         }
     }
 
+    /// <summary>
+    /// Draw item icons in their own colors even on disabled (informational) items like the
+    /// tray's Status/Source lines, which the base renderer would grey out.
+    /// </summary>
+    protected override void OnRenderItemImage(ToolStripItemImageRenderEventArgs e)
+    {
+        if (e.Image != null)
+            e.Graphics.DrawImage(e.Image, e.ImageRectangle);
+        else
+            base.OnRenderItemImage(e);
+    }
+
     protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
     {
         e.TextColor = e.Item.Enabled ? MainForm.AppColors.TextPrimary : MainForm.AppColors.TextMuted;

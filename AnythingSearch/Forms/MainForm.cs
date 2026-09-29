@@ -1,3 +1,4 @@
+using AnythingSearch.Helper;
 using AnythingSearch.Database;
 using AnythingSearch.Models;
 using AnythingSearch.Services;
@@ -183,7 +184,7 @@ public partial class MainForm : Form
 
             if (isIndexing)
             {
-                btnIndex.Text = "⏳ Indexing...";
+                ColorIcons.SetButtonIcon(btnIndex, ColorIcons.Indexing, "Indexing...");
                 btnIndex.Enabled = false;
                 progressBar.Visible = true;
                 lblSearchInfo.Text = _searchManager.GetStatusMessage();
@@ -199,12 +200,12 @@ public partial class MainForm : Form
             {
                 case SearchSource.Memory:
                 case SearchSource.SQLite:
-                    btnIndex.Text = "🔄 Rebuild Index";
+                    ColorIcons.SetButtonIcon(btnIndex, ColorIcons.Rebuild, "Rebuild Index");
                     lblSearchInfo.Text = $"✓ Local database ready ({_searchManager.IndexingStatus.TotalItems:N0} items)";
                     break;
 
                 default:
-                    btnIndex.Text = "🔧 Build Index";
+                    ColorIcons.SetButtonIcon(btnIndex, ColorIcons.Build, "Build Index");
                     lblSearchInfo.Text = "No index yet - use Build Index to create one";
                     break;
             }

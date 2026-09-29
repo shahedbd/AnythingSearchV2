@@ -66,10 +66,10 @@ public partial class MainForm
         // File Menu
         var fileMenu = new ToolStripMenuItem("File");
 
-        var rebuildItem = new ToolStripMenuItem("🔄  Rebuild Index", null, BtnIndex_Click, Keys.Control | Keys.R);
-        var settingsItem = new ToolStripMenuItem("⚙️  Settings", null, BtnSettings_Click, Keys.Control | Keys.S);
-        var minimizeItem = new ToolStripMenuItem("📥  Minimize to Tray", null, (s, e) => MinimizeToTray(), Keys.Control | Keys.M);
-        var exitItem = new ToolStripMenuItem("🚪  Exit", null, (s, e) => { _isExiting = true; Application.Exit(); }, Keys.Alt | Keys.F4);
+        var rebuildItem = ColorIcons.MenuItem("Rebuild Index", ColorIcons.Rebuild, this, BtnIndex_Click, Keys.Control | Keys.R);
+        var settingsItem = ColorIcons.MenuItem("Settings", ColorIcons.Settings, this, BtnSettings_Click, Keys.Control | Keys.S);
+        var minimizeItem = ColorIcons.MenuItem("Minimize to Tray", ColorIcons.MinimizeToTray, this, (s, e) => MinimizeToTray(), Keys.Control | Keys.M);
+        var exitItem = ColorIcons.MenuItem("Exit", ColorIcons.Exit, this, (s, e) => { _isExiting = true; Application.Exit(); }, Keys.Alt | Keys.F4);
 
         fileMenu.DropDownItems.Add(rebuildItem);
         fileMenu.DropDownItems.Add(settingsItem);
@@ -81,13 +81,13 @@ public partial class MainForm
         // Help Menu
         var helpMenu = new ToolStripMenuItem("Help");
 
-        var aboutItem = new ToolStripMenuItem("ℹ️  About Anything Search", null, (s, e) =>
+        var aboutItem = ColorIcons.MenuItem("About Anything Search", ColorIcons.About, this, (s, e) =>
         {
             using var aboutForm = new AboutForm();
             aboutForm.ShowDialog(this);
         }, Keys.F1);
 
-        var updateItem = new ToolStripMenuItem("🔃  Check for Updates...", null, (s, e) =>
+        var updateItem = ColorIcons.MenuItem("Check for Updates...", ColorIcons.Update, this, (s, e) =>
         {
             try
             {
@@ -100,7 +100,7 @@ public partial class MainForm
             catch { }
         });
 
-        var websiteItem = new ToolStripMenuItem("🌐  Visit Website", null, (s, e) =>
+        var websiteItem = ColorIcons.MenuItem("Visit Website", ColorIcons.Website, this, (s, e) =>
         {
             try
             {
@@ -194,23 +194,24 @@ public partial class MainForm
         // Search Icon
         var lblSearchIcon = new Label
         {
-            Text = "🔍",
+            Text = ColorIcons.Search.Glyph,
             Location = new Point((int)(8 * dpiScale), (int)(9 * dpiScale)),
             Size = new Size((int)(26 * dpiScale), (int)(22 * dpiScale)),
-            Font = new Font("Segoe UI", 11F),
-            ForeColor = AppColors.TextMuted
+            Font = new Font(ColorIcons.IconFontName, 11F),
+            ForeColor = ColorIcons.Search.Color,
+            TextAlign = ContentAlignment.MiddleCenter
         };
 
         // Clear button
         btnClearSearch = new Button
         {
-            Text = "✕",
+            Text = ColorIcons.Clear.Glyph,
             Size = new Size((int)(28 * dpiScale), (int)(28 * dpiScale)),
             Location = new Point(pnlSearchContainer.Width - clearBtnWidth, (int)(5 * dpiScale)),
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.Transparent,
-            ForeColor = AppColors.TextMuted,
-            Font = new Font("Segoe UI", 9F),
+            ForeColor = ColorIcons.Clear.Color,
+            Font = new Font(ColorIcons.IconFontName, 9F),
             Cursor = Cursors.Hand,
             Visible = false,
             Anchor = AnchorStyles.Top | AnchorStyles.Right,
@@ -272,13 +273,15 @@ public partial class MainForm
 
         // Settings button
         int settingsBtnX = rightEdge - checkboxWidth - spacing - settingsBtnWidth;
-        btnSettings = CreateModernButton("⚙ Settings", new Point(settingsBtnX, padding), new Size(settingsBtnWidth, controlHeight));
+        btnSettings = CreateModernButton("", new Point(settingsBtnX, padding), new Size(settingsBtnWidth, controlHeight));
+        ColorIcons.SetButtonIcon(btnSettings, ColorIcons.Settings, "Settings");
         btnSettings.Click += BtnSettings_Click;
         btnSettings.Anchor = AnchorStyles.Top | AnchorStyles.Right;
 
         // Rebuild Index button
         int rebuildBtnX = settingsBtnX - spacing - rebuildBtnWidth;
-        btnIndex = CreateModernButton("⟳ Rebuild Index", new Point(rebuildBtnX, padding), new Size(rebuildBtnWidth, controlHeight));
+        btnIndex = CreateModernButton("", new Point(rebuildBtnX, padding), new Size(rebuildBtnWidth, controlHeight));
+        ColorIcons.SetButtonIcon(btnIndex, ColorIcons.Rebuild, "Rebuild Index");
         btnIndex.Click += BtnIndex_Click;
         btnIndex.Anchor = AnchorStyles.Top | AnchorStyles.Right;
 

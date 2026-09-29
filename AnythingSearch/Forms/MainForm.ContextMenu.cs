@@ -1,3 +1,4 @@
+using AnythingSearch.Helper;
 using System.Runtime.InteropServices;
 
 namespace AnythingSearch.Forms;
@@ -14,15 +15,15 @@ public partial class MainForm
         contextMenu = new ContextMenuStrip { Font = new Font("Segoe UI", 9.5F) };
         contextMenu.Renderer = new ModernToolStripRenderer();
 
-        contextMenu.Items.Add(new ToolStripMenuItem("Open", null, ContextMenu_Open) { Font = new Font("Segoe UI", 9.5F, FontStyle.Bold) });
-        contextMenu.Items.Add(new ToolStripMenuItem("Open File Location", null, ContextMenu_OpenFolder));
+        contextMenu.Items.Add(new ToolStripMenuItem("Open", ColorIcons.Render(ColorIcons.Open, ColorIcons.SizeFor(this)), ContextMenu_Open) { Font = new Font("Segoe UI", 9.5F, FontStyle.Bold) });
+        contextMenu.Items.Add(ColorIcons.MenuItem("Open File Location", ColorIcons.OpenLocation, this, ContextMenu_OpenFolder));
         contextMenu.Items.Add(new ToolStripSeparator());
-        contextMenu.Items.Add(new ToolStripMenuItem("Copy Full Path", null, ContextMenu_CopyPath));
-        contextMenu.Items.Add(new ToolStripMenuItem("Copy Name", null, ContextMenu_CopyName));
+        contextMenu.Items.Add(ColorIcons.MenuItem("Copy Full Path", ColorIcons.CopyPath, this, ContextMenu_CopyPath));
+        contextMenu.Items.Add(ColorIcons.MenuItem("Copy Name", ColorIcons.CopyName, this, ContextMenu_CopyName));
         contextMenu.Items.Add(new ToolStripSeparator());
-        contextMenu.Items.Add(new ToolStripMenuItem("Properties", null, ContextMenu_Properties));
+        contextMenu.Items.Add(ColorIcons.MenuItem("Properties", ColorIcons.Properties, this, ContextMenu_Properties));
         contextMenu.Items.Add(new ToolStripSeparator());
-        contextMenu.Items.Add(new ToolStripMenuItem("Delete", null, ContextMenu_Delete) { ForeColor = Color.FromArgb(220, 50, 50) });
+        contextMenu.Items.Add(new ToolStripMenuItem("Delete", ColorIcons.Render(ColorIcons.Delete, ColorIcons.SizeFor(this)), ContextMenu_Delete) { ForeColor = Color.FromArgb(220, 50, 50) });
     }
 
     #endregion
