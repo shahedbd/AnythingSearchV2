@@ -99,6 +99,12 @@ public class AppSettings
     /// </summary>
     public bool MinimizeToTray { get; set; } = true;
 
+    /// <summary>
+    /// Keep the index in sync with the disk: live file-system watching plus the startup
+    /// catch-up scan for changes made while the app was closed. Mirrors the main window's
+    /// Auto-Watch checkbox.
+    /// </summary>
+    public bool AutoWatch { get; set; } = true;
 
     // ── Installation / telemetry ─────────────────────────────────────
     public int AppVersion { get; set; } = 0;

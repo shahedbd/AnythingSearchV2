@@ -143,7 +143,11 @@ public partial class MainForm : Form
             LoadRecentSearches();
 
             // Start file watcher if database is ready
-            if (_searchManager.IsDatabaseReady && chkAutoWatch.Checked)
+            if (!chkAutoWatch.Checked)
+            {
+                StopFileWatcher();  // not running yet; just shows "Auto-watch: Disabled"
+            }
+            else if (_searchManager.IsDatabaseReady)
             {
                 StartFileWatcher();
             }
@@ -151,7 +155,8 @@ public partial class MainForm : Form
             // Pick up everything that changed while the app was closed - the watcher above only
             // reports changes from now on. Runs in the background, never blocks the UI. Skipped
             // while indexing is still running: the pipeline is already reading the same disk.
-            if (_searchManager.IsDatabaseReady && !_searchManager.IsIndexing)
+            // Also skipped when Auto-Watch is off: the user asked for no background syncing.
+            if (chkAutoWatch.Checked && _searchManager.IsDatabaseReady && !_searchManager.IsIndexing)
             {
                 _ = _searchManager.RunCatchUpAsync().ContinueWith(
                     _ => SafeInvoke(() => _ = UpdateTotalCountAsync()),

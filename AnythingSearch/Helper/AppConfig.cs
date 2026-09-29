@@ -13,8 +13,8 @@ namespace AnythingSearch.Helper
             "Anything Search lets you instantly locate files and folders on Windows using a " +
             "lightning-fast indexed search engine.";
         public static string AppSubtitle = "Lightning-Fast File Search Utility";
-        public static string AppVersion = "Version 2.0.0.0";
-        public static int AppReleaseVersion = 2000;
+        public static string AppVersion = "Version 2.0.1.0";
+        public static int AppReleaseVersion = 2010;
 
         /// <summary>
         /// Folder under %LocalAppData% holding the index database, the indexing state file,

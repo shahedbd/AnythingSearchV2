@@ -1,4 +1,5 @@
 using AnythingSearch.Helper;
+using AnythingSearch.Services;
 using System.Runtime.InteropServices;
 
 namespace AnythingSearch.Forms;
@@ -257,7 +258,7 @@ public partial class MainForm
             Text = "Auto-Watch",
             Font = new Font("Segoe UI", 9.5F),
             ForeColor = AppColors.TextPrimary,
-            Checked = true,
+            Checked = SettingsService.Current.AutoWatch,
             Anchor = AnchorStyles.Top | AnchorStyles.Right,
             Cursor = Cursors.Hand,
             FlatStyle = FlatStyle.Standard

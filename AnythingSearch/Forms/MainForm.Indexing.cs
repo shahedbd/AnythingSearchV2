@@ -273,6 +273,10 @@ public partial class MainForm
 
     private void ChkAutoWatch_CheckedChanged(object? sender, EventArgs e)
     {
+        SettingsService.Current.AutoWatch = chkAutoWatch.Checked;
+        try { SettingsService.Save(); }
+        catch { /* already logged by SettingsService; the toggle still applies this session */ }
+
         if (chkAutoWatch.Checked)
             StartFileWatcher();
         else
