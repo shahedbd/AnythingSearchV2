@@ -1,5 +1,6 @@
 using AnythingSearch.Database;
 using AnythingSearch.Helper;
+using AnythingSearch.Services;
 using System.Diagnostics;
 using System.Reflection;
 
@@ -15,15 +16,18 @@ public partial class AboutForm : Form
     private static readonly string AppTagline = AppConfig.AppSubtitle;
     private static readonly string DeveloperName = AppConfig.CompanyName;
 
-    // Colors
-    private static readonly Color PrimaryColor = Color.FromArgb(0, 120, 212);
-    private static readonly Color PrimaryDark = Color.FromArgb(0, 90, 170);
-    private static readonly Color PrimaryLight = Color.FromArgb(0, 140, 240);
-    private static readonly Color BackgroundColor = Color.FromArgb(250, 250, 250);
-    private static readonly Color CardColor = Color.White;
-    private static readonly Color TextPrimary = Color.FromArgb(32, 32, 32);
-    private static readonly Color TextSecondary = Color.FromArgb(96, 96, 96);
-    private static readonly Color TextMuted = Color.FromArgb(128, 128, 128);
+    // Colors - follow the active light/dark theme (ThemeManager, via MainForm.AppColors). Filled
+    // accents (version badge, Close button, fallback logo) keep the brand blue in both themes
+    // so their white text keeps its contrast; the theme's Primary is too light for that in dark.
+    private static readonly Color BrandFill = Color.FromArgb(0, 120, 212);
+    private static readonly Color BrandFillHover = Color.FromArgb(0, 140, 240);
+    private static Color PrimaryColor => MainForm.AppColors.Primary;
+    private static Color PrimaryDark => MainForm.AppColors.PrimaryDark;
+    private static Color BackgroundColor => MainForm.AppColors.Background;
+    private static Color CardColor => MainForm.AppColors.Surface;
+    private static Color TextPrimary => MainForm.AppColors.TextPrimary;
+    private static Color TextSecondary => MainForm.AppColors.TextSecondary;
+    private static Color TextMuted => MainForm.AppColors.TextMuted;
 
     // DPI scale factor
     private float _dpiScale = 1.0f;
@@ -32,6 +36,7 @@ public partial class AboutForm : Form
     {
         InitializeComponent();
         InitializeUI();
+        HandleCreated += (_, _) => NativeTheme.ApplyTitleBar(this, ThemeManager.Instance.IsDarkTheme);
     }
 
     private void InitializeComponent()
@@ -117,7 +122,7 @@ public partial class AboutForm : Form
             Text = AppConfig.AppVersion,
             Font = new Font("Segoe UI", 9, FontStyle.Bold),
             ForeColor = Color.White,
-            BackColor = PrimaryColor,
+            BackColor = BrandFill,
             AutoSize = false,
             TextAlign = ContentAlignment.MiddleCenter,
             Size = new Size(badgeWidth, badgeHeight),
@@ -239,7 +244,7 @@ public partial class AboutForm : Form
         };
         btnUpdate.FlatAppearance.BorderColor = PrimaryColor;
         btnUpdate.FlatAppearance.BorderSize = 1;
-        btnUpdate.FlatAppearance.MouseOverBackColor = Color.FromArgb(240, 248, 255);
+        btnUpdate.FlatAppearance.MouseOverBackColor = MainForm.AppColors.Hover;
         btnUpdate.Click += (s, e) =>
         {
             try
@@ -258,13 +263,13 @@ public partial class AboutForm : Form
             Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
             Size = new Size(closeBtnWidth, btnHeight),
             Location = new Point(centerX + btnSpacing / 2, btnY),
-            BackColor = PrimaryColor,
+            BackColor = BrandFill,
             ForeColor = Color.White,
             FlatStyle = FlatStyle.Flat,
             Cursor = Cursors.Hand
         };
         btnClose.FlatAppearance.BorderSize = 0;
-        btnClose.FlatAppearance.MouseOverBackColor = PrimaryLight;
+        btnClose.FlatAppearance.MouseOverBackColor = BrandFillHover;
         btnClose.Click += (s, e) => this.Close();
         this.Controls.Add(btnClose);
 
@@ -309,7 +314,7 @@ public partial class AboutForm : Form
         };
         card.Paint += (s, e) =>
         {
-            using var pen = new Pen(Color.FromArgb(229, 229, 229), 1);
+            using var pen = new Pen(MainForm.AppColors.Border, 1);
             e.Graphics.DrawRectangle(pen, 0, 0, card.Width - 1, card.Height - 1);
         };
         return card;
@@ -378,7 +383,7 @@ public partial class AboutForm : Form
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
             // Draw circle background
-            using (var brush = new SolidBrush(PrimaryColor))
+            using (var brush = new SolidBrush(BrandFill))
             {
                 g.FillEllipse(brush, 2, 2, size - 4, size - 4);
             }

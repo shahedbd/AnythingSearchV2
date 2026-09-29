@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using AnythingSearch.Helper;
 using AnythingSearch.Services;
 
@@ -165,37 +164,15 @@ public partial class MainForm
 
     #region Native (title bar, scrollbars)
 
-    private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
-    private const int DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1 = 19;
-
-    [DllImport("dwmapi.dll")]
-    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
-
-    [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
-    private static extern int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
-
     private void ApplyNativeTheme()
     {
-        if (!IsHandleCreated) return;
         bool isDark = ThemeManager.Instance.IsDarkTheme;
+        NativeTheme.ApplyTitleBar(this, isDark);
 
-        try
-        {
-            int value = isDark ? 1 : 0;
-            if (DwmSetWindowAttribute(Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref value, sizeof(int)) != 0)
-                DwmSetWindowAttribute(Handle, DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1, ref value, sizeof(int));
-
-            // Dark scrollbars: the recent-searches list scrolls natively, the grid through
-            // its own ScrollBar child controls.
-            string themeName = isDark ? "DarkMode_Explorer" : "Explorer";
-            var scrollHosts = dgvResults.Controls.OfType<ScrollBar>().Cast<Control>().Append(flpRecentSearches);
-            foreach (var ctl in scrollHosts.Where(c => c.IsHandleCreated))
-                SetWindowTheme(ctl.Handle, themeName, null);
-        }
-        catch
-        {
-            // Cosmetic only - older Windows builds without these APIs keep the light chrome.
-        }
+        // Dark scrollbars: the recent-searches list scrolls natively, the grid through
+        // its own ScrollBar child controls.
+        var scrollHosts = dgvResults.Controls.OfType<ScrollBar>().Cast<Control>().Append(flpRecentSearches);
+        NativeTheme.ApplyScrollBars(scrollHosts, isDark);
     }
 
     #endregion
