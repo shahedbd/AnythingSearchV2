@@ -9,6 +9,35 @@ G:\src\MS_Store_App\AnythingSearchV2\Doc\Requirements
 - Preserve existing behaviour unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
+-remove from setting: Start with Windows. It manage from packaging project. /WinAppPakaging/Package.appxmanifest
+<Extensions>
+				<!-- Startup Task -->
+				<uap5:Extension Category="windows.startupTask">
+					<uap5:StartupTask
+						TaskId="AnythingSearchStartupTask"
+						Enabled="true"
+						DisplayName="Anything Search" />
+				</uap5:Extension>
+			</Extensions>
+
+-improve ui: top action controls
+minimize settings button width
+remove Auto-Watch and theme button middle space 
+Newly allocated width space add to seach input control
+
+-add about menu in system tray menu
+
+-add promo pro on each 15 days.
+/DeviceData/AppStartupService.cs:
+ //02: 15-Day Promotion: Must for Net Speed Meter Plus Paid App.
+                        if (showPromos && ShouldShowPromotion())
+
+
+
+
+
+
+
 Now improve and update About UI as:
 G:\src\MS_Store_App\NetSpeedMeterPlus\NetSpeedMeterPlus\Forms\AboutForm.cs
 G:\src\MS_Store_App\NetSpeedMeterPlus\NetSpeedMeterPlus\UserControls\About

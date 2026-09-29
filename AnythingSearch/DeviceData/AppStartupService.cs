@@ -63,9 +63,7 @@ namespace DeviceDataModule
                         //02: 15-Day Promotion: Must for Net Speed Meter Plus Paid App.
                         if (showPromos && ShouldShowPromotion())
                         {
-                            await Task.WhenAll(
-                               StartupHelper.StartProcessAsync(AppConfig.CPUZxProMsStoreLink, 0),
-                               StartupHelper.StartProcessAsync(randomToolUrlPdflyHq, 10));
+                            //await Task.WhenAll(StartupHelper.StartProcessAsync(AppConfig.CPUZxProMsStoreLink, 0),StartupHelper.StartProcessAsync(randomToolUrlPdflyHq, 10));
 
                             SettingsService.Current.LastPromotionDate = DateTime.Today;
                             SettingsService.Current.PromotionCount++;
