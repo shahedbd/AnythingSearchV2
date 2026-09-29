@@ -70,6 +70,16 @@ public partial class MainForm
         dialog.ShowDialog(this);
     }
 
+    /// <summary>
+    /// The 15-day Go Pro promotion (DeviceData/AppStartupService). Must run on the UI thread.
+    /// Re-checks the licence, since the user may have bought Pro between scheduling and now.
+    /// </summary>
+    internal void ShowProPromotion()
+    {
+        if (IsDisposed || ProLicenseManager.Instance.IsPro) return;
+        ShowGoPro();
+    }
+
     private async void RestoreMenuItem_Click(object? sender, EventArgs e)
     {
         bool reached = await ProLicenseManager.Instance.RefreshAsync();

@@ -54,7 +54,6 @@ namespace AnythingSearch.Helper
         /// <see cref="AppName"/>: renaming it would orphan the entry of every existing install
         /// and the app would silently stop starting with Windows.
         /// </summary>
-        public static string StartupRegistryValueName = "AnythingSearch";
 
         public static Color PrimaryColor = Color.FromArgb(48, 151, 202); // #3097CA
         public static string AppIconPath => Path.Combine(Application.StartupPath, "Resources", "180x180.png");

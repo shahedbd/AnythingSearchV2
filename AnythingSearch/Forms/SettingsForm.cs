@@ -21,7 +21,6 @@ public partial class SettingsForm : Form
     private ListBox lstExcludedFolders = null!;
     private Button btnAddFolder = null!;
     private Button btnRemoveFolder = null!;
-    private CheckBox chkStartWithWindows = null!;
     private CheckBox chkMinimizeToTray = null!;
     private Button btnSave = null!;
     private Button btnCancel = null!;
@@ -104,22 +103,15 @@ public partial class SettingsForm : Form
             AutoSize = true
         };
 
-        chkStartWithWindows = new CheckBox
-        {
-            Text = "Start with Windows",
-            Font = new Font("Segoe UI", 9.5F),
-            ForeColor = TextPrimary,
-            Location = new Point(24, 458),
-            AutoSize = true,
-            Cursor = Cursors.Hand
-        };
-
+        // "Start with Windows" is not a setting here: the MSIX package's StartupTask
+        // (WinAppPakaging/Package.appxmanifest) owns it, and users toggle it in
+        // Windows Settings > Apps > Startup.
         chkMinimizeToTray = new CheckBox
         {
             Text = "Minimize to system tray when closing",
             Font = new Font("Segoe UI", 9.5F),
             ForeColor = TextPrimary,
-            Location = new Point(24, 486),
+            Location = new Point(24, 458),
             AutoSize = true,
             Cursor = Cursors.Hand
         };
@@ -137,7 +129,7 @@ public partial class SettingsForm : Form
         {
             lblTitle, lblExcluded, lblExcludedDesc, lstExcludedFolders,
             btnAddFolder, btnRemoveFolder,
-            lblOptions, chkStartWithWindows, chkMinimizeToTray,
+            lblOptions, chkMinimizeToTray,
             btnSave, btnCancel
         });
 
@@ -172,7 +164,6 @@ public partial class SettingsForm : Form
             lstExcludedFolders.Items.Add(folder);
         }
 
-        chkStartWithWindows.Checked = settings.StartWithWindows;
         chkMinimizeToTray.Checked = settings.MinimizeToTray;
     }
 
@@ -211,42 +202,13 @@ public partial class SettingsForm : Form
             settings.ExcludedFolders.Add(item.ToString()!);
         }
 
-        settings.StartWithWindows = chkStartWithWindows.Checked;
         settings.MinimizeToTray = chkMinimizeToTray.Checked;
 
         SettingsService.Save();
-
-        // Handle startup registration
-        if (settings.StartWithWindows)
-            RegisterStartup();
-        else
-            UnregisterStartup();
 
         MessageBox.Show("Settings saved successfully!", "Settings",
             MessageBoxButtons.OK, MessageBoxIcon.Information);
 
         Close();
-    }
-
-    private void RegisterStartup()
-    {
-        try
-        {
-            var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
-                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true);
-            key?.SetValue(AppConfig.StartupRegistryValueName, Application.ExecutablePath);
-        }
-        catch { }
-    }
-
-    private void UnregisterStartup()
-    {
-        try
-        {
-            var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
-                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true);
-            key?.DeleteValue(AppConfig.StartupRegistryValueName, false);
-        }
-        catch { }
     }
 }

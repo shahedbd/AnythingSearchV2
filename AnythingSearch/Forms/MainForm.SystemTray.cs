@@ -39,6 +39,8 @@ public partial class MainForm
             BtnSettings_Click(s, e);
         };
 
+        var aboutItem = ColorIcons.MenuItem($"About {AppConfig.AppName}", ColorIcons.About, this, (_, _) => ShowAbout());
+
         var separator2 = new ToolStripSeparator();
 
         var statusItem = new ToolStripMenuItem("Status: Initializing...", ColorIcons.Render(ColorIcons.Status, ColorIcons.SizeFor(this)))
@@ -60,7 +62,7 @@ public partial class MainForm
 
         _trayContextMenu.Items.AddRange(new ToolStripItem[]
         {
-            openItem, CreateGoProTrayItem(), separator1, rebuildItem, settingsItem,
+            openItem, CreateGoProTrayItem(), separator1, rebuildItem, settingsItem, aboutItem,
             separator2, statusItem, sourceItem, separator3, exitItem
         });
 
@@ -106,6 +108,16 @@ public partial class MainForm
         this.Activate();
         this.BringToFront();
         txtSearch.Focus();
+    }
+
+    /// <summary>Opens the About dialog (Help menu and tray), restoring the window from the tray first.</summary>
+    private void ShowAbout()
+    {
+        if (!Visible || WindowState == FormWindowState.Minimized)
+            ShowFromTray();
+
+        using var aboutForm = new AboutForm();
+        aboutForm.ShowDialog(this);
     }
 
     private void MinimizeToTray()

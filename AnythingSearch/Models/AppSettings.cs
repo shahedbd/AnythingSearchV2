@@ -90,11 +90,6 @@ public class AppSettings
     public int LargeScopeSegmentItems { get; set; } = 500_000;
 
     /// <summary>
-    /// Start the app automatically when Windows starts
-    /// </summary>
-    public bool StartWithWindows { get; set; } = false;
-
-    /// <summary>
     /// Minimize to system tray instead of closing
     /// </summary>
     public bool MinimizeToTray { get; set; } = true;

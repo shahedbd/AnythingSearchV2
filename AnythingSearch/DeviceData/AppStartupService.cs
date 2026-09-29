@@ -1,4 +1,5 @@
-﻿using AnythingSearch.Helper;
+﻿using AnythingSearch.Forms;
+using AnythingSearch.Helper;
 using AnythingSearch.Services;
 using AnythingSearch.Services.Store;
 
@@ -60,11 +61,15 @@ namespace DeviceDataModule
                             Logger.Log("New installation setup completed");
                         }
 
-                        //02: 15-Day Promotion: Must for Net Speed Meter Plus Paid App.
-                        if (showPromos && ShouldShowPromotion())
-                        {
-                            //await Task.WhenAll(StartupHelper.StartProcessAsync(AppConfig.CPUZxProMsStoreLink, 0),StartupHelper.StartProcessAsync(randomToolUrlPdflyHq, 10));
+                        //Test Promotion:
+                        //await Task.Delay(1000);
+                        //TryShowProPromotion();
 
+
+                        //02: 15-Day Promotion: the Go Pro dialog, for Free users only (showPromos).
+                        if (showPromos && ShouldShowPromotion() && TryShowProPromotion())
+                        {
+                            await Task.WhenAll(StartupHelper.StartProcessAsync(randomToolUrlPdflyHq, 10));
                             SettingsService.Current.LastPromotionDate = DateTime.Today;
                             SettingsService.Current.PromotionCount++;
                             SettingsService.Save();
@@ -129,7 +134,31 @@ namespace DeviceDataModule
         }
 
         /// <summary>
-        /// Check if 14-day promotion period has passed
+        /// Opens the Go Pro dialog on the main window's UI thread. This task runs on a thread-pool
+        /// thread, so it can only ask the window to do it. Returns false when the main window
+        /// isn't up yet (no handle to marshal onto); the promotion is then not recorded and
+        /// simply retried on the next launch.
+        /// </summary>
+        private static bool TryShowProPromotion()
+        {
+            try
+            {
+                var main = Application.OpenForms.OfType<MainForm>().FirstOrDefault();
+                if (main == null || main.IsDisposed || !main.IsHandleCreated)
+                    return false;
+
+                main.BeginInvoke(main.ShowProPromotion);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Could not show the Go Pro promotion: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Check if the 15-day promotion period has passed
         /// </summary>
         private static bool ShouldShowPromotion()
         {

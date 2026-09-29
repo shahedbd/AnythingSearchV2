@@ -81,11 +81,7 @@ public partial class MainForm
         // Help Menu
         var helpMenu = new ToolStripMenuItem("Help");
 
-        var aboutItem = ColorIcons.MenuItem("About Anything Search", ColorIcons.About, this, (s, e) =>
-        {
-            using var aboutForm = new AboutForm();
-            aboutForm.ShowDialog(this);
-        }, Keys.F1);
+        var aboutItem = ColorIcons.MenuItem("About Anything Search", ColorIcons.About, this, (s, e) => ShowAbout(), Keys.F1);
 
         var updateItem = ColorIcons.MenuItem("Check for Updates...", ColorIcons.Update, this, (s, e) =>
         {
@@ -158,8 +154,12 @@ public partial class MainForm
 
         // Calculate button widths based on DPI
         int rebuildBtnWidth = (int)(130 * dpiScale);
-        int settingsBtnWidth = (int)(110 * dpiScale);
-        int checkboxWidth = (int)(130 * dpiScale);
+        int settingsBtnWidth = (int)(92 * dpiScale);
+
+        // Auto-Watch is sized to its own text (+ the check box glyph), so no dead space sits
+        // between it and the theme button; the width saved goes to the search box.
+        var autoWatchFont = new Font("Segoe UI", 9.5F);
+        int checkboxWidth = TextRenderer.MeasureText("Auto-Watch", autoWatchFont).Width + (int)(24 * dpiScale);
         int themeBtnWidth = controlHeight;  // square icon button
         int goProBtnWidth = (int)(100 * dpiScale);
 
@@ -265,7 +265,7 @@ public partial class MainForm
             Location = new Point(rightEdge - checkboxWidth, padding + (int)(7 * dpiScale)),
             Size = new Size(checkboxWidth, (int)(26 * dpiScale)),
             Text = "Auto-Watch",
-            Font = new Font("Segoe UI", 9.5F),
+            Font = autoWatchFont,
             ForeColor = AppColors.TextPrimary,
             Checked = SettingsService.Current.AutoWatch,
             Anchor = AnchorStyles.Top | AnchorStyles.Right,
