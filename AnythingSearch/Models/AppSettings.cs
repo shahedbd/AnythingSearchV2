@@ -111,6 +111,14 @@ public class AppSettings
     /// </summary>
     public bool IsDarkMode { get; set; } = false;
 
+    // ── Pro licence cache ────────────────────────────────────────────
+    /// <summary>
+    /// Last answer the Microsoft Store gave for the Pro add-on. Only an explicit Store reply
+    /// changes it, so a failed or offline check never downgrades a paying user.
+    /// </summary>
+    public bool IsProCached { get; set; } = false;
+    public DateTime? LastLicenseCheckUtc { get; set; } = null;
+
     // ── Installation / telemetry ─────────────────────────────────────
     public int AppVersion { get; set; } = 0;
     public int LaunchCount { get; set; } = 0;

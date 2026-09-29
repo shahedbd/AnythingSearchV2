@@ -19,6 +19,12 @@ namespace AnythingSearch.Helper
         public const string LifetimeSubscriptionStoreId = "9NDK4ZTL7ML9";
         public const string LifetimeSubscriptionStorePrice = "$9.99/year";
 
+        // ── Test-only Pro override ───────────────────────────────────────
+        // Decides ProLicenseManager.IsPro outright, ignoring the Store and the cache, so both
+        // the Free and the Pro UI are reachable on any machine. MUST be Off in every shipped
+        // build; ForcePro gives Pro away. See Doc/Requirements/06_Go_Pro_Implementation_Plan.md.
+        public static ProTestMode ProTest = ProTestMode.Off;
+
 
         /// <summary>
         /// Folder under %LocalAppData% holding the index database, the indexing state file,
@@ -171,5 +177,21 @@ namespace AnythingSearch.Helper
         // distinct strip rather than blending into the header/content below it.
         // Same value as PrimaryColor (the app logo's core color).
         public static Color TitleBarColor = PrimaryColor;
+    }
+
+    /// <summary>
+    /// Test-only override for <see cref="AppConfig.ProTest"/>. Consumed in exactly one place,
+    /// ProLicenseManager.IsPro.
+    /// </summary>
+    public enum ProTestMode
+    {
+        /// <summary>No override; the Store licence decides. Ship this.</summary>
+        Off,
+
+        /// <summary>Behave as a Pro owner.</summary>
+        ForcePro,
+
+        /// <summary>Behave as a Free user, even when the add-on is owned.</summary>
+        ForceFree
     }
 }

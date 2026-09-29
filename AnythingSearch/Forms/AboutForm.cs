@@ -125,6 +125,7 @@ public partial class AboutForm : Form
         };
         lblVersion.Location = new Point(centerX - badgeWidth / 2, Scale(155));
         this.Controls.Add(lblVersion);
+        AddEditionBadge(new Point(lblVersion.Right + Scale(8), lblVersion.Top), badgeHeight);
 
         // Tagline
         Label lblTagline = new Label

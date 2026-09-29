@@ -109,6 +109,7 @@ public partial class MainForm : Form
         InitializeComponent();
         InitializeTheme();
         InitializeSystemTray();
+        InitializeGoPro();
         InitializeAsync();      
     }
 

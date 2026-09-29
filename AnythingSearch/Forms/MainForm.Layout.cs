@@ -116,6 +116,8 @@ public partial class MainForm
         helpMenu.DropDownItems.Add(aboutItem);
         helpMenu.DropDownItems.Add(updateItem);
         helpMenu.DropDownItems.Add(new ToolStripSeparator());
+        helpMenu.DropDownItems.AddRange(CreateGoProMenuItems());
+        helpMenu.DropDownItems.Add(new ToolStripSeparator());
         helpMenu.DropDownItems.Add(websiteItem);
 
         menuStrip.Items.AddRange(new ToolStripItem[] { fileMenu, helpMenu });
@@ -159,9 +161,10 @@ public partial class MainForm
         int settingsBtnWidth = (int)(110 * dpiScale);
         int checkboxWidth = (int)(130 * dpiScale);
         int themeBtnWidth = controlHeight;  // square icon button
+        int goProBtnWidth = (int)(100 * dpiScale);
 
         // Calculate right-side controls total width
-        int rightControlsWidth = rebuildBtnWidth + spacing + settingsBtnWidth + spacing + checkboxWidth + spacing + themeBtnWidth + padding;
+        int rightControlsWidth = goProBtnWidth + spacing + rebuildBtnWidth + spacing + settingsBtnWidth + spacing + checkboxWidth + spacing + themeBtnWidth + padding;
 
         // Search Container - takes remaining space
         int searchWidth = this.ClientSize.Width - rightControlsWidth - padding - spacing;
@@ -285,7 +288,11 @@ public partial class MainForm
         btnIndex.Click += BtnIndex_Click;
         btnIndex.Anchor = AnchorStyles.Top | AnchorStyles.Right;
 
-        pnlHeader.Controls.AddRange(new Control[] { pnlSearchContainer, btnIndex, btnSettings, chkAutoWatch, btnTheme });
+        // Go Pro button (left of Rebuild; text/icon set by UpdateGoProUi)
+        int goProBtnX = rebuildBtnX - spacing - goProBtnWidth;
+        btnGoPro = CreateGoProButton(new Point(goProBtnX, padding), new Size(goProBtnWidth, controlHeight));
+
+        pnlHeader.Controls.AddRange(new Control[] { pnlSearchContainer, btnGoPro, btnIndex, btnSettings, chkAutoWatch, btnTheme });
         this.Controls.Add(pnlHeader);
     }
 

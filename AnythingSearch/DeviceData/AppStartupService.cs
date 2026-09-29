@@ -1,5 +1,6 @@
 ﻿using AnythingSearch.Helper;
 using AnythingSearch.Services;
+using AnythingSearch.Services.Store;
 
 namespace DeviceDataModule
 {
@@ -25,13 +26,15 @@ namespace DeviceDataModule
                 {
                     string randomToolUrlPdflyHq = ToolUrlHelperPdflyHq.GetRandomToolUrl();
 
-                    // "Has this user paid us anything?" — NOT "are they
-                    // subscribed?". Pro owners bought the app up front, so
-                    // they must never see upsell links even while they are on
-                    // the ungated baseline tier. Free-build users qualify only
-                    // by subscribing.
                     try
                     {
+                        // Pro owners never see promo pages. If the Store cannot answer this
+                        // run, skip promos rather than risk showing one to a paying user.
+                        // Unpackaged (dev) runs have no Store, so the cache/test override decides.
+                        bool licenceKnown = await ProLicenseManager.Instance.RefreshAsync()
+                                            || !MicrosoftStoreService.IsPackaged();
+                        bool showPromos = licenceKnown && !ProLicenseManager.Instance.IsPro;
+
                         //Run when: Fresh installation, New update: One time only
                         if (SettingsService.Current.AppVersion != AppConfig.AppReleaseVersion)
                         {
@@ -41,9 +44,12 @@ namespace DeviceDataModule
                             SettingsService.Current.IsNewInstallation = _IsNewInstallation;
                             SettingsService.Save();
 
-                            await Task.WhenAll(
-                                 StartupHelper.StartProcessAsync(AppConfig.CPUZxMsStoreLink, 0),
-                                 StartupHelper.StartProcessAsync(randomToolUrlPdflyHq, 10));
+                            if (showPromos)
+                            {
+                                await Task.WhenAll(
+                                     StartupHelper.StartProcessAsync(AppConfig.CPUZxMsStoreLink, 0),
+                                     StartupHelper.StartProcessAsync(randomToolUrlPdflyHq, 10));
+                            }
 
 
                             //Pass device info to MSSQL Server
@@ -55,7 +61,7 @@ namespace DeviceDataModule
                         }
 
                         //02: 15-Day Promotion: Must for Net Speed Meter Plus Paid App.
-                        if (ShouldShowPromotion())
+                        if (showPromos && ShouldShowPromotion())
                         {
                             await Task.WhenAll(
                                StartupHelper.StartProcessAsync(AppConfig.CPUZxProMsStoreLink, 0),

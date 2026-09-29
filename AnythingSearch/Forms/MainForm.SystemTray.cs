@@ -60,7 +60,7 @@ public partial class MainForm
 
         _trayContextMenu.Items.AddRange(new ToolStripItem[]
         {
-            openItem, separator1, rebuildItem, settingsItem,
+            openItem, CreateGoProTrayItem(), separator1, rebuildItem, settingsItem,
             separator2, statusItem, sourceItem, separator3, exitItem
         });
 

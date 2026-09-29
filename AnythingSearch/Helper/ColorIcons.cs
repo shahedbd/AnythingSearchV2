@@ -46,6 +46,11 @@ public static class ColorIcons
     public static readonly ColorIcon Website = new("\uE774", Cyan);
     public static readonly ColorIcon Status = new("\uE9D2", Purple);
 
+    // Go Pro
+    public static readonly ColorIcon ProStar = new("\uE735", Amber);
+    public static readonly ColorIcon CheckMark = new("\uE73E", Green);
+    public static readonly ColorIcon Mail = new("\uE715", Blue);
+
     // Results context menu
     public static readonly ColorIcon Open = new("\uE8E5", Blue);
     public static readonly ColorIcon OpenLocation = new("\uE838", Orange);

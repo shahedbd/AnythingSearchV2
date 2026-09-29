@@ -71,7 +71,7 @@ public partial class MainForm
         txtSearch.ForeColor = txtSearch.Text == "Search files and folders..." ? AppColors.TextMuted : AppColors.TextPrimary;
         btnClearSearch.FlatAppearance.MouseOverBackColor = AppColors.DangerHover;
         chkAutoWatch.ForeColor = AppColors.TextPrimary;
-        foreach (var btn in new[] { btnIndex, btnSettings, btnTheme })
+        foreach (var btn in new[] { btnGoPro, btnIndex, btnSettings, btnTheme })
             StyleModernButton(btn);
         UpdateThemeButtonIcon();
 

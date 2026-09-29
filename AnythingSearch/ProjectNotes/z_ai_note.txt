@@ -6,14 +6,14 @@ G:\src\MS_Store_App\AnythingSearchV2\Doc\Requirements
 - Optimize token usage: inspect only relevant files and make the smallest necessary changes.
 - Follow the existing architecture, documentation, patterns, naming conventions, and coding style.
 - Reuse existing code and dependencies; avoid unnecessary refactoring or new dependencies.
-- Preserve existing behavior unless the task requires otherwise.
+- Preserve existing behaviour unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
 By following doc:
 G:\src\MS_Store_App\AnythingSearchV2\Doc\Requirements\05_Go_Pro_Design.md
 G:\src\MS_Store_App\AnythingSearchV2\Doc\Requirements\06_Go_Pro_Implementation_Plan.md
 
-And existing implemenetaion:
+And existing implementation:
 G:\src\MS_Store_App\NetSpeedMeterPlus\NetSpeedMeterPlus
 
 
