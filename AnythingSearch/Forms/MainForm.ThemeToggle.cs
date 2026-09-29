@@ -103,19 +103,30 @@ public partial class MainForm
         dgvResults.BackgroundColor = AppColors.Surface;
         dgvResults.GridColor = AppColors.Surface;
 
-        foreach (var style in new[] { dgvResults.DefaultCellStyle, dgvResults.AlternatingRowsDefaultCellStyle })
-        {
-            style.ForeColor = AppColors.TextPrimary;
-            style.SelectionBackColor = AppColors.SelectionBack;
-            style.SelectionForeColor = Color.White;
-        }
-        dgvResults.DefaultCellStyle.BackColor = AppColors.Surface;
-        dgvResults.AlternatingRowsDefaultCellStyle.BackColor = AppColors.SurfaceAlt;
+        // Assign new style objects rather than mutating the current ones: the DefaultCellStyle
+        // getter hands back a throwaway copy whenever one of its core properties (Alignment,
+        // WrapMode, ...) is unset - which ours are - so in-place edits were silently lost and
+        // every non-alternating row stayed white in dark mode.
+        dgvResults.DefaultCellStyle = RowStyle(dgvResults.DefaultCellStyle, AppColors.Surface);
+        dgvResults.AlternatingRowsDefaultCellStyle = RowStyle(dgvResults.AlternatingRowsDefaultCellStyle, AppColors.SurfaceAlt);
 
-        dgvResults.ColumnHeadersDefaultCellStyle.BackColor = AppColors.GridHeader;
-        dgvResults.ColumnHeadersDefaultCellStyle.ForeColor = AppColors.TextPrimary;
-        dgvResults.ColumnHeadersDefaultCellStyle.SelectionBackColor = AppColors.GridHeader;
+        dgvResults.ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle(dgvResults.ColumnHeadersDefaultCellStyle)
+        {
+            BackColor = AppColors.GridHeader,
+            ForeColor = AppColors.TextPrimary,
+            SelectionBackColor = AppColors.GridHeader,
+            SelectionForeColor = AppColors.TextPrimary
+        };
     }
+
+    private static DataGridViewCellStyle RowStyle(DataGridViewCellStyle current, Color backColor) =>
+        new(current)
+        {
+            BackColor = backColor,
+            ForeColor = AppColors.TextPrimary,
+            SelectionBackColor = AppColors.SelectionBack,
+            SelectionForeColor = Color.White
+        };
 
     /// <summary>Shared styling for header buttons (also used by CreateModernButton).</summary>
     private static void StyleModernButton(Button btn)

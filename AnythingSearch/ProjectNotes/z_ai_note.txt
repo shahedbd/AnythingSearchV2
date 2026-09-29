@@ -9,6 +9,11 @@ C:\Users\Public\src\MS_Store_App\AnythingSearch\Doc\Requirements
 - Preserve existing behavior unless the task requires otherwise.
 - Keep responses concise and report only important changes, affected files, and caveats.
 **********************************************************************************************************************
+Fix dark mode feature(Theme) issue:
+-in search result 
+
+
+
 Now make app all iocns colorfull.
 
 
