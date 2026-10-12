@@ -21,7 +21,7 @@ namespace AnythingSearch.Services.Search.Memory;
 /// and the rebuild policy; see MemorySearchService.Query.cs for query execution and how the
 /// delta is folded into a result.
 /// </summary>
-public sealed partial class MemorySearchService : IDisposable
+public sealed partial class MemorySearchService : IIndexChangeSink, IDisposable
 {
     private readonly string _databasePath;
     private readonly Timer _rebuildTimer;

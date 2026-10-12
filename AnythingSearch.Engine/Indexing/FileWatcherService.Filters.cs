@@ -1,3 +1,4 @@
+using AnythingSearch.Engine;
 using AnythingSearch.Models;
 
 namespace AnythingSearch.Services;
@@ -12,7 +13,7 @@ namespace AnythingSearch.Services;
 /// which costs the whole subtree until the next catch-up pass. So the filters must not allocate.
 ///
 /// They used to build two interpolated strings per excluded folder per event: with the ~28
-/// entries in <see cref="AppSettings.ExcludedFolders"/> that is 56 string allocations for every
+/// entries in <see cref="IndexSettings.ExcludedFolders"/> that is 56 string allocations for every
 /// file that changes anywhere on the machine, which during a build or a large copy is millions of
 /// short-lived strings competing for gen-0 with the search the user is waiting on. The patterns
 /// are now built once and reused until the settings object itself is replaced.
@@ -21,10 +22,10 @@ public partial class FileWatcherService
 {
     /// <summary>
     /// The settings instance the cached patterns were built from. Volatile, and assigned LAST,
-    /// so a reader that sees it also sees the arrays below. SettingsService hands out the same
-    /// instance until Reload/ResetToDefaults swaps it, which is what makes this a valid cache key.
+    /// so a reader that sees it also sees the arrays below. The host's settings provider hands out
+    /// the same instance until its settings are replaced, which is what makes this a valid cache key.
     /// </summary>
-    private volatile AppSettings? _filterSettings;
+    private volatile IndexSettings? _filterSettings;
 
     private string[] _excludedSegments = Array.Empty<string>();   // "\name\" - matches mid-path
     private string[] _excludedSuffixes = Array.Empty<string>();   // "\name"  - matches the path itself
@@ -33,7 +34,7 @@ public partial class FileWatcherService
 
     private void EnsureFilters()
     {
-        var settings = SettingsService.Current;
+        var settings = EngineOptions.Current.Settings();
         if (ReferenceEquals(_filterSettings, settings)) return;
 
         lock (_filterLock)

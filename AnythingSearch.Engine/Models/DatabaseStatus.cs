@@ -1,5 +1,4 @@
-using AnythingSearch.Helper;
-using DeviceDataModule;
+using AnythingSearch.Engine;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -12,7 +11,7 @@ namespace AnythingSearch.Models;
 public class DatabaseStatus
 {
     private static readonly string StatusFilePath = Path.Combine(
-        ApplicationDataManager.Instance.ApplicationDataDirectory,
+        EngineOptions.Current.DataDirectory,
         "database_status.json");
 
     /// <summary>
@@ -115,7 +114,7 @@ public class DatabaseStatus
                     // If app crashed during indexing, mark as failed
                     if (status.State == DatabaseState.Indexing)
                     {
-                        Logger.Log("Previous indexing run was interrupted - the indexing state " +
+                        EngineLog.Log("Previous indexing run was interrupted - the indexing state " +
                                    "file still holds its checkpoints, so it will resume.");
                         status.State = DatabaseState.Failed;
                         status.ErrorMessage = "Indexing was interrupted (application closed unexpectedly)";
@@ -127,7 +126,7 @@ public class DatabaseStatus
         }
         catch (Exception ex)
         {
-            Logger.Log($"Failed to load the database status file: {ex.Message}");
+            EngineLog.Log($"Failed to load the database status file: {ex.Message}");
         }
 
         return new DatabaseStatus { _filePath = path };
@@ -154,7 +153,7 @@ public class DatabaseStatus
         }
         catch (Exception ex)
         {
-            Logger.Log($"Failed to save the database status file: {ex.Message}");
+            EngineLog.Log($"Failed to save the database status file: {ex.Message}");
         }
     }
 
@@ -226,7 +225,7 @@ public class DatabaseStatus
         CurrentPath = string.Empty;
         ErrorMessage = null;
 
-        Logger.Log($"Index ready - {totalFiles:N0} files, {totalFolders:N0} folders.");
+        EngineLog.Log($"Index ready - {totalFiles:N0} files, {totalFolders:N0} folders.");
         Save();
     }
 

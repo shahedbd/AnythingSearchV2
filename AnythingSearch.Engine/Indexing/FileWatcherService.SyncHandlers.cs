@@ -1,4 +1,3 @@
-using AnythingSearch.Helper;
 using AnythingSearch.Models;
 
 namespace AnythingSearch.Services;

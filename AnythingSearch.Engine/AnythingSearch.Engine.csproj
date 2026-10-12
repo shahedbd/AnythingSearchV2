@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Anything Search index (SQLite database, indexer, file watcher) as a class library, so
+       other apps (Duplicate Finder ZX) can share it. No WinForms here: each app passes its own
+       data folder, settings and log sink in through EngineOptions. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>AnythingSearch.Engine</AssemblyName>
+    <RootNamespace>AnythingSearch</RootNamespace>
+    <Authors>Zero Byte Software Solutions</Authors>
+    <Company>Zero Byte Software Solutions</Company>
+    <Product>Anything Search Engine</Product>
+    <Version>2.0.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.11" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Lets AnythingSearch.Tests drive the index catch-up pass for a single directory -->
+    <InternalsVisibleTo Include="AnythingSearch.Tests" />
+  </ItemGroup>
+
+</Project>

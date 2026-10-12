@@ -9,6 +9,8 @@ Project("{C7167F0D-BC9F-4E6E-AFE1-012C56B48DB5}") = "WinAppPakaging", "WinAppPak
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AnythingSearch.Tests", "AnythingSearch.Tests\AnythingSearch.Tests.csproj", "{4BFAF1F9-2A0A-46C6-B837-C8B9D2CA1252}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AnythingSearch.Engine", "AnythingSearch.Engine\AnythingSearch.Engine.csproj", "{D258C6ED-0641-4C28-86B2-9023A0C40F3B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -93,6 +95,26 @@ Global
 		{4BFAF1F9-2A0A-46C6-B837-C8B9D2CA1252}.Release|x64.Build.0 = Release|Any CPU
 		{4BFAF1F9-2A0A-46C6-B837-C8B9D2CA1252}.Release|x86.ActiveCfg = Release|Any CPU
 		{4BFAF1F9-2A0A-46C6-B837-C8B9D2CA1252}.Release|x86.Build.0 = Release|Any CPU
+		{D258C6ED-0641-4C28-86B2-9023A0C40F3B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D258C6ED-0641-4C28-86B2-9023A0C40F3B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D258C6ED-0641-4C28-86B2-9023A0C40F3B}.Debug|ARM.ActiveCfg = Debug|Any CPU
+		{D258C6ED-0641-4C28-86B2-9023A0C40F3B}.Debug|ARM.Build.0 = Debug|Any CPU
+		{D258C6ED-0641-4C28-86B2-9023A0C40F3B}.Debug|ARM64.ActiveCfg = Debug|Any CPU
+		{D258C6ED-0641-4C28-86B2-9023A0C40F3B}.Debug|ARM64.Build.0 = Debug|Any CPU
+		{D258C6ED-0641-4C28-86B2-9023A0C40F3B}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D258C6ED-0641-4C28-86B2-9023A0C40F3B}.Debug|x64.Build.0 = Debug|Any CPU
+		{D258C6ED-0641-4C28-86B2-9023A0C40F3B}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{D258C6ED-0641-4C28-86B2-9023A0C40F3B}.Debug|x86.Build.0 = Debug|Any CPU
+		{D258C6ED-0641-4C28-86B2-9023A0C40F3B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D258C6ED-0641-4C28-86B2-9023A0C40F3B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D258C6ED-0641-4C28-86B2-9023A0C40F3B}.Release|ARM.ActiveCfg = Release|Any CPU
+		{D258C6ED-0641-4C28-86B2-9023A0C40F3B}.Release|ARM.Build.0 = Release|Any CPU
+		{D258C6ED-0641-4C28-86B2-9023A0C40F3B}.Release|ARM64.ActiveCfg = Release|Any CPU
+		{D258C6ED-0641-4C28-86B2-9023A0C40F3B}.Release|ARM64.Build.0 = Release|Any CPU
+		{D258C6ED-0641-4C28-86B2-9023A0C40F3B}.Release|x64.ActiveCfg = Release|Any CPU
+		{D258C6ED-0641-4C28-86B2-9023A0C40F3B}.Release|x64.Build.0 = Release|Any CPU
+		{D258C6ED-0641-4C28-86B2-9023A0C40F3B}.Release|x86.ActiveCfg = Release|Any CPU
+		{D258C6ED-0641-4C28-86B2-9023A0C40F3B}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

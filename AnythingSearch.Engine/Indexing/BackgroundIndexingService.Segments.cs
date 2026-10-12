@@ -1,3 +1,4 @@
+using AnythingSearch.Engine;
 using AnythingSearch.Models;
 
 namespace AnythingSearch.Services;
@@ -13,7 +14,7 @@ namespace AnythingSearch.Services;
 ///
 /// So a data drive is segmented by what has actually been indexed. The scope's units are already
 /// processed in committed chunks; once a scope has added
-/// <see cref="AppSettings.LargeScopeSegmentItems"/> entries since its last publish, and there are
+/// <see cref="IndexSettings.LargeScopeSegmentItems"/> entries since its last publish, and there are
 /// still chunks to go, the entries so far are published as a sub-phase and become searchable.
 /// A 1.6-million-entry drive therefore publishes three times instead of going dark for its whole
 /// walk, and a 200,000-entry drive publishes once, with no pre-pass and no assumption about how
@@ -82,5 +83,5 @@ public partial class BackgroundIndexingService
     /// Entries a scope may add before its next sub-phase is published, or 0 when segmentation is
     /// switched off in settings.
     /// </summary>
-    private long SegmentThreshold => Math.Max(0, SettingsService.Current.LargeScopeSegmentItems);
+    private long SegmentThreshold => Math.Max(0, EngineOptions.Current.Settings().LargeScopeSegmentItems);
 }

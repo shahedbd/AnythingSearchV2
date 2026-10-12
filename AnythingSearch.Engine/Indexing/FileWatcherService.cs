@@ -1,8 +1,7 @@
+using AnythingSearch.Engine;
 using System.Collections.Concurrent;
-using AnythingSearch.Helper;
 using AnythingSearch.Models;
 using AnythingSearch.Database;
-using AnythingSearch.Services.Search.Memory;
 using Timer = System.Threading.Timer;
 
 namespace AnythingSearch.Services;
@@ -27,7 +26,7 @@ public partial class FileWatcherService : IDisposable
 
     // Every change written to SQLite is mirrored here so the in-memory index stays current
     // between snapshot rebuilds. Null until the search manager hands it over.
-    private MemorySearchService? _memoryIndex;
+    private IIndexChangeSink? _memoryIndex;
     private readonly List<FileSystemWatcher> _watchers = new();
     private readonly ConcurrentDictionary<string, FileSystemChange> _pendingChanges = new();
     private readonly Timer _processTimer;
@@ -58,7 +57,7 @@ public partial class FileWatcherService : IDisposable
     /// Mirror changes into the in-memory search index as well as the database, so a file created
     /// a second ago is findable without waiting for the next snapshot rebuild.
     /// </summary>
-    public void AttachMemoryIndex(MemorySearchService memoryIndex) => _memoryIndex = memoryIndex;
+    public void AttachMemoryIndex(IIndexChangeSink memoryIndex) => _memoryIndex = memoryIndex;
 
     public FileWatcherService(FileDatabase database)
     {
@@ -291,7 +290,7 @@ public partial class FileWatcherService : IDisposable
         {
             if (DateTime.UtcNow >= deadline)
             {
-                Logger.Log("File watcher shutdown timed out with a change batch still applying.");
+                EngineLog.Log("File watcher shutdown timed out with a change batch still applying.");
                 return false;
             }
 

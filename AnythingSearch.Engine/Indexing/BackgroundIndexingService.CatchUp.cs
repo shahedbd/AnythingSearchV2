@@ -1,4 +1,4 @@
-using AnythingSearch.Helper;
+using AnythingSearch.Engine;
 using AnythingSearch.Models;
 
 namespace AnythingSearch.Services;
@@ -56,7 +56,7 @@ public partial class BackgroundIndexingService
                 }
                 catch (Exception ex)
                 {
-                    Logger.Log($"Catch-up skipped {root.Directory.FullName}: {ex.Message}");
+                    EngineLog.Log($"Catch-up skipped {root.Directory.FullName}: {ex.Message}");
                 }
 
                 done++;

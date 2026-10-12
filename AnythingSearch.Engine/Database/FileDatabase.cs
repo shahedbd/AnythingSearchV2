@@ -1,5 +1,5 @@
+using AnythingSearch.Engine;
 using AnythingSearch.Models;
-using DeviceDataModule;
 using Microsoft.Data.Sqlite;
 using System.Collections.Concurrent;
 
@@ -109,11 +109,9 @@ public partial class FileDatabase : IDisposable
             return;
         }
 
-        // ApplicationDataManager, not a hand-built %LocalAppData% path: it creates and
-        // validates the directory and falls back when it is unwritable, which a hard-coded
-        // Path.Combine cannot do.
-        _dbPath = Path.Combine(
-            ApplicationDataManager.Instance.ApplicationDataDirectory, "AnythingSearch.db");
+        // The host app's data folder (Anything Search: ApplicationDataManager, which creates and
+        // validates the directory and falls back when it is unwritable).
+        _dbPath = EngineOptions.Current.DbPath;
     }
 
     /// <summary>
@@ -357,6 +355,9 @@ public partial class FileDatabase : IDisposable
 
         // Back to the modest settings the app runs with the rest of the time
         await ApplyRuntimeSettingsAsync();
+
+        // Off for Anything Search; Duplicate Finder ZX groups by size and turns it on.
+        await CreateSizeIndexIfEnabledAsync();
 
         // Optimize
         await ExecuteNonQueryAsync("ANALYZE");

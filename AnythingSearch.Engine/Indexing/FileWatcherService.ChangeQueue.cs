@@ -1,3 +1,4 @@
+using AnythingSearch.Engine;
 using AnythingSearch.Models;
 
 namespace AnythingSearch.Services;
@@ -256,7 +257,7 @@ public partial class FileWatcherService
                 }
                 catch (Exception ex)
                 {
-                    Helper.Logger.Log($"File watcher could not apply a change to {change.Path}: {ex.Message}");
+                    EngineLog.Log($"File watcher could not apply a change to {change.Path}: {ex.Message}");
                     errors++;
                 }
             }

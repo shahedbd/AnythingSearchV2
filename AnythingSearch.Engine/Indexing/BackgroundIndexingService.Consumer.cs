@@ -1,4 +1,4 @@
-using AnythingSearch.Helper;
+using AnythingSearch.Engine;
 using AnythingSearch.Models;
 
 namespace AnythingSearch.Services;
@@ -40,7 +40,7 @@ public partial class BackgroundIndexingService
         }
         catch (Exception ex)
         {
-            Logger.Log($"Indexing writer stopped early - entries may be re-indexed: {ex.Message}");
+            EngineLog.Log($"Indexing writer stopped early - entries may be re-indexed: {ex.Message}");
         }
     }
 

@@ -1,7 +1,6 @@
+using AnythingSearch.Engine;
 using AnythingSearch.Database;
-using AnythingSearch.Helper;
 using AnythingSearch.Models;
-using DeviceDataModule;
 using System.Diagnostics;
 using System.Threading.Channels;
 
@@ -23,8 +22,8 @@ namespace AnythingSearch.Services;
 /// Throughput is deliberately bounded rather than maximal. The previous version ran one walker
 /// per CPU core across hundreds of directories on all drives at once, which pinned the disk at
 /// 100% and starved the UI. Here one scope runs at a time, with a small number of concurrent
-/// walkers and a throttle pause between batches (see <see cref="AppSettings.MaxIndexingThreads"/>,
-/// read through <see cref="SettingsService"/>).
+/// walkers and a throttle pause between batches (see <see cref="IndexSettings.MaxIndexingThreads"/>,
+/// read through <see cref="Engine.EngineOptions.Settings"/>).
 ///
 /// Split into partial classes: this file owns the lifecycle and public API,
 /// BackgroundIndexingService.Pipeline.cs the phase/scope/checkpoint loop,
@@ -143,14 +142,14 @@ public partial class BackgroundIndexingService : IDisposable
             if (!_status.IsReady)
                 _status.MarkCompleted(_state.TotalFiles, _state.TotalFolders);
 
-            Logger.Log($"Index already complete with {count:N0} items - nothing to do.");
+            EngineLog.Log($"Index already complete with {count:N0} items - nothing to do.");
             DatabaseReady?.Invoke();
 
             // This release indexes into a versioned data folder, so the previous release's
             // folder is dead weight once a complete index exists here. Retried on every launch
             // that finds a complete index, because the first attempt can fail while an older
             // copy of the app is still holding its database open.
-            _ = Task.Run(LegacyDataCleanup.Run);
+            if (EngineOptions.Current.IndexComplete is { } onComplete) _ = Task.Run(onComplete);
             return;
         }
 
@@ -162,7 +161,7 @@ public partial class BackgroundIndexingService : IDisposable
             DatabaseReady?.Invoke();
         }
 
-        Logger.Log($"Resuming indexing - {_state.Scopes.Count(s => s.Status == IndexScopeStatus.Completed)} " +
+        EngineLog.Log($"Resuming indexing - {_state.Scopes.Count(s => s.Status == IndexScopeStatus.Completed)} " +
                    $"of {_state.Scopes.Count} scopes already done.");
         StartPipeline(fullRebuild: false);
     }
@@ -265,7 +264,7 @@ public partial class BackgroundIndexingService : IDisposable
 
             if (completed != task)
             {
-                Logger.Log("Indexing shutdown timed out - the pipeline was still running.");
+                EngineLog.Log("Indexing shutdown timed out - the pipeline was still running.");
                 return false;
             }
 
@@ -280,7 +279,7 @@ public partial class BackgroundIndexingService : IDisposable
         }
         catch (Exception ex)
         {
-            Logger.Log($"Indexing pipeline faulted while shutting down: {ex.Message}");
+            EngineLog.Log($"Indexing pipeline faulted while shutting down: {ex.Message}");
             return true;
         }
     }

@@ -1,4 +1,4 @@
-using AnythingSearch.Helper;
+using AnythingSearch.Engine;
 using AnythingSearch.Models;
 
 namespace AnythingSearch.Services;
@@ -115,7 +115,7 @@ public partial class FileWatcherService
 
             if (depth >= MaxWatchIndexDepth)
             {
-                Logger.Log($"Auto-watch stopped at depth {MaxWatchIndexDepth}: {directory.FullName}");
+                EngineLog.Log($"Auto-watch stopped at depth {MaxWatchIndexDepth}: {directory.FullName}");
                 continue;
             }
 
@@ -130,7 +130,7 @@ public partial class FileWatcherService
         {
             if (_deferredDirectories.Count >= MaxDeferredDirectories)
             {
-                Logger.Log(
+                EngineLog.Log(
                     $"Auto-watch backlog full - {directory.FullName} left to the next catch-up pass.");
                 return;
             }

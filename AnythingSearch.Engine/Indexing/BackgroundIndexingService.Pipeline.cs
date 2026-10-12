@@ -1,6 +1,6 @@
+using AnythingSearch.Engine;
 using System.Collections.Concurrent;
 using System.Threading.Channels;
-using AnythingSearch.Helper;
 using AnythingSearch.Models;
 
 namespace AnythingSearch.Services;
@@ -106,7 +106,7 @@ public partial class BackgroundIndexingService
             // A complete index now exists in this release's own data folder, so the previous
             // release's folder can go. Off this thread: a recursive delete of a several-hundred
             // megabyte database has no business holding up the end of the pipeline.
-            _ = Task.Run(LegacyDataCleanup.Run);
+            if (EngineOptions.Current.IndexComplete is { } onComplete) _ = Task.Run(onComplete);
         }
         catch (OperationCanceledException)
         {
@@ -132,7 +132,7 @@ public partial class BackgroundIndexingService
     ///
     /// Normally the scope publishes - becomes searchable - once all of its units are committed.
     /// A scope that keeps growing publishes what it has every
-    /// <see cref="AppSettings.LargeScopeSegmentItems"/> entries instead, so a 1.4-million-file
+    /// <see cref="IndexSettings.LargeScopeSegmentItems"/> entries instead, so a 1.4-million-file
     /// drive does not stay invisible for its whole walk (see
     /// BackgroundIndexingService.Segments.cs).
     /// </summary>

@@ -1,4 +1,6 @@
+using AnythingSearch.Engine;
 using AnythingSearch.Helper;
+using AnythingSearch.Services;
 using DeviceDataModule;
 
 namespace AnythingSearch.Forms;
@@ -33,6 +35,16 @@ internal static class Program
             _singleInstanceMutex.Dispose();
             return;
         }
+
+        // Before anything touches the index: the engine reads its data folder, settings and log
+        // sink from here (DatabaseStatus and IndexingState resolve their file paths on first use).
+        EngineOptions.Configure(new EngineOptions
+        {
+            DataDirectory = ApplicationDataManager.Instance.ApplicationDataDirectory,
+            Settings = () => SettingsService.Current,
+            Log = Logger.Log,
+            IndexComplete = LegacyDataCleanup.Run,
+        });
 
         // Enable high DPI support for Windows 10/11
         // This is CRITICAL for Microsoft Store approval at 150% scaling

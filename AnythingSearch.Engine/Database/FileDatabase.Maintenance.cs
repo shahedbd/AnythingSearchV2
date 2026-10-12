@@ -1,3 +1,4 @@
+using AnythingSearch.Engine;
 using Microsoft.Data.Sqlite;
 
 namespace AnythingSearch.Database;
@@ -19,6 +20,7 @@ namespace AnythingSearch.Database;
 public partial class FileDatabase
 {
     private const string UniqueIndexName = "idx_files_folder_name_unique";
+    private const string SizeIndexName = "idx_files_size";
 
     /// <summary>Reports progress of the one-off duplicate clean-up.</summary>
     public event Action<string>? MaintenanceStatusChanged;
@@ -68,6 +70,29 @@ public partial class FileDatabase
         await ExecuteNonQueryAsync("ANALYZE");
 
         return removed;
+    }
+
+    /// <summary>
+    /// Build idx_files_size when <see cref="EngineOptions.CreateSizeIndex"/> is on, for a database
+    /// whose bulk build finished before the option was set (or by another host). A catalogue
+    /// lookup once the index exists. Does nothing when the option is off.
+    /// </summary>
+    public async Task EnsureSizeIndexAsync()
+    {
+        using var dbLock = await LockAsync();
+        await CreateSizeIndexIfEnabledAsync();
+    }
+
+    /// <summary>
+    /// Files(Size) for regular files only, so grouping candidates by size is an index walk
+    /// instead of a scan of every row. Built after the bulk build, never during it: maintaining
+    /// it per insert would slow the build for no benefit. Caller holds the database lock.
+    /// </summary>
+    private async Task CreateSizeIndexIfEnabledAsync()
+    {
+        if (!EngineOptions.Current.CreateSizeIndex) return;
+        await ExecuteNonQueryAsync(
+            $"CREATE INDEX IF NOT EXISTS {SizeIndexName} ON Files(Size) WHERE IsFolder = 0");
     }
 
     /// <summary>

@@ -1,4 +1,5 @@
 using AnythingSearch.Database;
+using AnythingSearch.Engine;
 using AnythingSearch.Models;
 using AnythingSearch.Services;
 using Xunit;
@@ -41,11 +42,12 @@ public class IndexCatchUpTests : IAsyncLifetime
         _database = new FileDatabase(_dbPath);
         await _database.InitializeAsync();
 
-        // Deterministic, in-memory only (never saved - SettingsService.Save() is not called).
-        // The default list excludes "AppData\Local\Temp", which is exactly where the test
-        // tree lives.
-        SettingsService.Current.ExcludedFolders.Clear();
-        SettingsService.Current.ExcludedExtensions.Clear();
+        // Deterministic, in-memory settings for the engine. The default list excludes
+        // "AppData\Local\Temp", which is exactly where the test tree lives.
+        var settings = new IndexSettings();
+        settings.ExcludedFolders.Clear();
+        settings.ExcludedExtensions.Clear();
+        EngineOptions.Configure(new EngineOptions { Settings = () => settings });
 
         _indexing = new BackgroundIndexingService(_database, _statusPath);
 

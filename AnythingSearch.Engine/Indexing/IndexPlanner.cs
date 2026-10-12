@@ -1,3 +1,4 @@
+using AnythingSearch.Engine;
 using AnythingSearch.Models;
 
 namespace AnythingSearch.Services;
@@ -76,7 +77,7 @@ internal sealed partial class IndexPlanner
             scopes.Add(new($"drive:{drive.Name}", IndexPhase.DataDrives, drive.Name, $"Drive {drive.Name}"));
         }
 
-        if (SettingsService.Current.IndexSystemDrive)
+        if (EngineOptions.Current.Settings().IndexSystemDrive)
             scopes.AddRange(BuildSystemDriveScopes(osDrive));
 
         return scopes;
@@ -265,7 +266,7 @@ internal sealed partial class IndexPlanner
 
     public bool IsExcluded(string path)
     {
-        foreach (var excluded in SettingsService.Current.ExcludedFolders)
+        foreach (var excluded in EngineOptions.Current.Settings().ExcludedFolders)
         {
             if (path.Contains($"\\{excluded}\\", StringComparison.OrdinalIgnoreCase) ||
                 path.EndsWith($"\\{excluded}", StringComparison.OrdinalIgnoreCase))
@@ -278,7 +279,7 @@ internal sealed partial class IndexPlanner
     {
         if (string.IsNullOrEmpty(extension)) return false;
         var ext = extension.TrimStart('.').ToLowerInvariant();
-        return SettingsService.Current.ExcludedExtensions.Contains(ext);
+        return EngineOptions.Current.Settings().ExcludedExtensions.Contains(ext);
     }
 
     /// <summary>

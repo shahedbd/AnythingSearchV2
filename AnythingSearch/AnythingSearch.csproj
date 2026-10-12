@@ -163,8 +163,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.11" />
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
     <PackageReference Include="System.Management" Version="10.0.11" />
   </ItemGroup>
 
@@ -191,6 +189,12 @@
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
     </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Index database, indexer and file watcher, shared with Duplicate Finder ZX.
+         Brings Microsoft.Data.Sqlite and SQLitePCLRaw with it. -->
+    <ProjectReference Include="..\AnythingSearch.Engine\AnythingSearch.Engine.csproj" />
   </ItemGroup>
 
   <ItemGroup>

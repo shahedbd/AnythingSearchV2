@@ -1,5 +1,5 @@
+using AnythingSearch.Engine;
 using System.Collections.Concurrent;
-using AnythingSearch.Helper;
 
 namespace AnythingSearch.Services;
 
@@ -35,8 +35,8 @@ namespace AnythingSearch.Services;
 /// Every limit stops at the number the app already used, so no machine can come out of this
 /// slower than it went in.
 ///
-/// Users who have set a number themselves keep it: <see cref="Models.AppSettings.AutoTuneIndexing"/>
-/// turns all of this off and <see cref="Models.AppSettings.MaxIndexingThreads"/> is used verbatim.
+/// Users who have set a number themselves keep it: <see cref="Models.IndexSettings.AutoTuneIndexing"/>
+/// turns all of this off and <see cref="Models.IndexSettings.MaxIndexingThreads"/> is used verbatim.
 /// </summary>
 public static class IndexingCapacity
 {
@@ -102,7 +102,7 @@ public static class IndexingCapacity
     /// </summary>
     public static int WalkersFor(string path)
     {
-        var settings = SettingsService.Current;
+        var settings = EngineOptions.Current.Settings();
         if (!settings.AutoTuneIndexing)
             return Math.Max(1, settings.MaxIndexingThreads);
 
@@ -152,7 +152,7 @@ public static class IndexingCapacity
     /// </summary>
     public static (int BatchSize, int DelayMs) ThrottleFor(string path)
     {
-        var settings = SettingsService.Current;
+        var settings = EngineOptions.Current.Settings();
         if (!settings.AutoTuneIndexing)
             return (Math.Max(0, settings.IndexThrottleBatchSize), Math.Max(0, settings.IndexThrottleDelayMs));
 
@@ -193,7 +193,7 @@ public static class IndexingCapacity
         var root = TryGetRoot(path);
         if (!Explained.TryAdd(root, 0)) return;
 
-        Logger.Log($"Indexing {root}: {decision}");
+        EngineLog.Log($"Indexing {root}: {decision}");
     }
 
     private static string TryGetRoot(string path)

@@ -1,6 +1,6 @@
+using AnythingSearch.Engine;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
-using AnythingSearch.Helper;
 using Microsoft.Win32.SafeHandles;
 
 namespace AnythingSearch.Services;
@@ -62,7 +62,7 @@ public static class StorageProfiler
         return Cache.GetOrAdd(letter, static drive =>
         {
             var profile = Detect(drive);
-            Logger.Log($"Storage profile {drive}: {profile.Description}");
+            EngineLog.Log($"Storage profile {drive}: {profile.Description}");
             return profile;
         });
     }
